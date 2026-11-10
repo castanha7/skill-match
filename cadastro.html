@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cadastro de Candidato — SkillMatch</title>
+  <meta name="description" content="Crie sua conta gratuita no SkillMatch e encontre vagas de Jovem Aprendiz, estágio e primeiro emprego que combinam com você." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232563eb'/%3E%3Ccircle cx='22' cy='24' r='7' fill='none' stroke='white' stroke-width='5'/%3E%3Ccircle cx='42' cy='40' r='7' fill='none' stroke='%237dd3fc' stroke-width='5'/%3E%3Cpath d='M27 29l10 6' stroke='white' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/base.css" />
+  <link rel="stylesheet" href="assets/css/auth.css" />
+</head>
+<body>
+  <main class="auth-layout">
+
+    <!-- ===== Painel de marca ===== -->
+    <section class="auth-brand" aria-hidden="true">
+      <div class="logo-wrap--light reveal">
+        <a class="logo logo--light" href="index.html" tabindex="-1">
+          <span class="logo-mark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="7" r="3"/><circle cx="17.5" cy="17" r="3"/><circle cx="17.5" cy="7" r="2.2"/><path d="M9 9.5l5.5 5M8.8 5.2l6-1.4M6.5 10v6.5"/></svg>
+          </span>
+          <span>
+            <span class="logo-name">Skill<em>Match</em></span>
+            <span class="slogan" style="display:block">Suas habilidades. Sua oportunidade.</span>
+          </span>
+        </a>
+      </div>
+
+      <div class="brand-mid">
+        <span class="brand-badge reveal reveal-1"><span class="dot"></span> Cadastro gratuito em 3 passos</span>
+        <h1 class="reveal reveal-1">Monte seu perfil e receba vagas que <span class="highlight">combinam com você</span>.</h1>
+        <p class="reveal reveal-2">Quanto mais completo o seu perfil, melhores serão as recomendações de vagas de aprendizagem, estágio e primeiro emprego.</p>
+
+        <ul class="brand-features reveal reveal-2">
+          <li>
+            <span class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+            Leva menos de 3 minutos
+          </li>
+          <li>
+            <span class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
+            Seus dados protegidos e sob seu controle
+          </li>
+          <li>
+            <span class="feat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></span>
+            Feito para Jovem Aprendiz, estágio e trainee
+          </li>
+        </ul>
+      </div>
+
+      <div class="brand-stats reveal reveal-4">
+        <div><strong>+1.200</strong><small>jovens cadastrados</small></div>
+        <div><strong>+350</strong><small>vagas publicadas</small></div>
+        <div><strong>+180</strong><small>empresas parceiras</small></div>
+      </div>
+    </section>
+
+    <!-- ===== Painel do formulário ===== -->
+    <section class="auth-form-panel">
+      <header class="auth-form-head">
+        <a class="logo mobile-logo" href="index.html">
+          <span class="logo-mark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="7" r="3"/><circle cx="17.5" cy="17" r="3"/><circle cx="17.5" cy="7" r="2.2"/><path d="M9 9.5l5.5 5M8.8 5.2l6-1.4M6.5 10v6.5"/></svg>
+          </span>
+          <span class="logo-name">Skill<em>Match</em></span>
+        </a>
+        <p class="auth-switch">Já tem uma conta? <a href="index.html"><strong>Entrar</strong></a></p>
+      </header>
+
+      <div class="auth-form-body wide">
+        <div class="reveal">
+          <h2>Crie sua conta 🚀</h2>
+          <p class="lead">Preencha seus dados para começar. Você poderá completar o restante depois, no seu perfil.</p>
+        </div>
+
+        <!-- Stepper -->
+        <div class="stepper reveal reveal-1" id="stepper" aria-label="Progresso do cadastro">
+          <div class="step active" data-step-indicator="1">
+            <span class="step-circle"><span class="step-number">1</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <small>Sua conta</small>
+          </div>
+          <div class="step-line" data-line="1"><span></span></div>
+          <div class="step" data-step-indicator="2">
+            <span class="step-circle"><span class="step-number">2</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <small>Seu perfil</small>
+          </div>
+          <div class="step-line" data-line="2"><span></span></div>
+          <div class="step" data-step-indicator="3">
+            <span class="step-circle"><span class="step-number">3</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+            <small>Habilidades</small>
+          </div>
+        </div>
+
+        <div class="alert alert-error" id="registerAlert" role="alert">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+          <span id="registerAlertText"></span>
+        </div>
+
+        <form id="registerForm" novalidate>
+
+          <!-- ========== PASSO 1 — Conta ========== -->
+          <section class="step-panel active" data-step="1">
+            <div class="field">
+              <label for="nome">Nome completo</label>
+              <div class="input-wrap">
+                <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
+                <input class="input" type="text" id="nome" placeholder="Ex.: Ana Beatriz Lima" autocomplete="name" />
+              </div>
+              <p class="error-msg">Informe seu nome e sobrenome.</p>
+            </div>
+
+            <div class="field">
+              <label for="email">E-mail</label>
+              <div class="input-wrap">
+                <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+                <input class="input" type="email" id="email" placeholder="seu@email.com" autocomplete="email" />
+              </div>
+              <p class="error-msg">Informe um e-mail válido.</p>
+            </div>
+
+            <div class="form-row">
+              <div class="field">
+                <label for="senha">Senha</label>
+                <div class="input-wrap">
+                  <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                  <input class="input has-toggle" type="password" id="senha" placeholder="Mín. 8 caracteres" autocomplete="new-password" />
+                  <button type="button" class="toggle-password" data-target="senha" aria-label="Mostrar senha">
+                    <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9.5 9.5 0 0 1 12 4c6.5 0 10 8 10 8a13.2 13.2 0 0 1-1.67 2.68M6.61 6.61A13.5 13.5 0 0 0 2 12s3.5 8 10 8a9.7 9.7 0 0 0 5.39-1.61"/><path d="m2 2 20 20"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/></svg>
+                  </button>
+                </div>
+                <div class="password-meter" id="passwordMeter"><div class="password-meter-bar" id="passwordMeterBar"></div></div>
+                <p class="password-meter-label" id="passwordMeterLabel"></p>
+                <p class="error-msg">A senha deve ter ao menos 8 caracteres, com letras e números.</p>
+              </div>
+
+              <div class="field">
+                <label for="confirmarSenha">Confirmar senha</label>
+                <div class="input-wrap">
+                  <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                  <input class="input has-toggle" type="password" id="confirmarSenha" placeholder="Repita a senha" autocomplete="new-password" />
+                  <button type="button" class="toggle-password" data-target="confirmarSenha" aria-label="Mostrar senha">
+                    <svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                    <svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.9 4.24A9.5 9.5 0 0 1 12 4c6.5 0 10 8 10 8a13.2 13.2 0 0 1-1.67 2.68M6.61 6.61A13.5 13.5 0 0 0 2 12s3.5 8 10 8a9.7 9.7 0 0 0 5.39-1.61"/><path d="m2 2 20 20"/><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/></svg>
+                  </button>
+                </div>
+                <p class="error-msg">As senhas não coincidem.</p>
+              </div>
+            </div>
+
+            <div class="field" style="margin-top:.4rem">
+              <label class="check">
+                <input type="checkbox" id="aceiteTermos" />
+                <span>Li e concordo com os <a href="#" onclick="return false">Termos de Uso</a> e a <a href="#" onclick="return false">Política de Privacidade</a> do SkillMatch.</span>
+              </label>
+              <p class="error-msg" id="termosError">Você precisa aceitar os termos para continuar.</p>
+            </div>
+
+            <div class="step-actions">
+              <button type="button" class="btn btn-primary" data-next>Continuar
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </button>
+            </div>
+          </section>
+
+          <!-- ========== PASSO 2 — Perfil ========== -->
+          <section class="step-panel" data-step="2">
+            <div class="form-row">
+              <div class="field">
+                <label for="telefone">Celular / WhatsApp</label>
+                <div class="input-wrap">
+                  <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.13.96.36 1.9.7 2.8a2 2 0 0 1-.45 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.45c.9.34 1.84.57 2.8.7A2 2 0 0 1 22 16.9z"/></svg>
+                  <input class="input" type="tel" id="telefone" placeholder="(00) 00000-0000" autocomplete="tel" inputmode="numeric" />
+                </div>
+                <p class="error-msg">Informe um telefone válido com DDD.</p>
+              </div>
+
+              <div class="field">
+                <label for="dataNascimento">Data de nascimento</label>
+                <div class="input-wrap">
+                  <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+                  <input class="input" type="date" id="dataNascimento" autocomplete="bday" />
+                </div>
+                <p class="error-msg">Informe uma data válida (idade entre 14 e 100 anos).</p>
+              </div>
+            </div>
+
+            <div class="form-row-3">
+              <div class="field">
+                <label for="cidade">Cidade</label>
+                <div class="input-wrap">
+                  <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  <input class="input" type="text" id="cidade" placeholder="Ex.: São Paulo" autocomplete="address-level2" />
+                </div>
+                <p class="error-msg">Informe sua cidade.</p>
+              </div>
+              <div class="field">
+                <label for="estado">Estado (UF)</label>
+                <select class="input" id="estado"><option value="">Selecione</option></select>
+                <p class="error-msg">Selecione o estado.</p>
+              </div>
+            </div>
+
+            <div class="field">
+              <label for="escolaridade">Escolaridade</label>
+              <select class="input" id="escolaridade"><option value="">Selecione sua escolaridade</option></select>
+              <p class="error-msg">Selecione sua escolaridade.</p>
+            </div>
+
+            <div class="form-row">
+              <div class="field">
+                <label for="curso">Curso <span class="optional">(se estiver estudando)</span></label>
+                <input class="input" type="text" id="curso" placeholder="Ex.: Técnico em Informática" />
+              </div>
+              <div class="field">
+                <label for="instituicao">Instituição de ensino <span class="optional">(opcional)</span></label>
+                <input class="input" type="text" id="instituicao" placeholder="Ex.: ETEC, IFPR, SENAI..." />
+              </div>
+            </div>
+
+            <div class="step-actions">
+              <button type="button" class="btn btn-ghost" data-back>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+                Voltar
+              </button>
+              <button type="button" class="btn btn-primary" data-next>Continuar
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </button>
+            </div>
+          </section>
+
+          <!-- ========== PASSO 3 — Habilidades e interesses ========== -->
+          <section class="step-panel" data-step="3">
+            <div class="field">
+              <label for="areaInteresse">Área de interesse</label>
+              <select class="input" id="areaInteresse"><option value="">Em qual área você quer trabalhar?</option></select>
+              <p class="error-msg">Selecione uma área de interesse.</p>
+            </div>
+
+            <div class="field">
+              <span class="field-label" id="tiposVagaLabel">Que tipo de oportunidade você procura?</span>
+              <div class="pill-group" id="tiposVagaGroup" role="group" aria-labelledby="tiposVagaLabel"></div>
+              <p class="error-msg" id="tiposVagaError">Selecione pelo menos um tipo de vaga.</p>
+            </div>
+
+            <div class="field">
+              <label for="disponibilidade">Disponibilidade de horário</label>
+              <select class="input" id="disponibilidade"><option value="">Selecione sua disponibilidade</option></select>
+              <p class="error-msg">Selecione sua disponibilidade.</p>
+            </div>
+
+            <div class="field skills-editor" id="skillsEditor">
+              <label for="skillInput">Suas habilidades</label>
+              <div style="display:flex;gap:.6rem">
+                <div class="input-wrap" style="flex:1">
+                  <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/></svg>
+                  <input class="input skill-input" type="text" id="skillInput" placeholder="Digite e pressione Enter (ex.: Excel)" />
+                </div>
+                <button type="button" class="btn btn-ghost skill-add">Adicionar</button>
+              </div>
+              <div class="tags-container" style="display:flex;flex-wrap:wrap;gap:.45rem;margin-top:.7rem"></div>
+              <div class="skill-suggestions"></div>
+              <p class="hint skill-count"></p>
+              <p class="error-msg" id="skillsError">Adicione pelo menos 3 habilidades.</p>
+            </div>
+
+            <div class="field">
+              <label for="resumo">Sobre você <span class="optional">(opcional)</span></label>
+              <textarea class="input" id="resumo" maxlength="600" placeholder="Conte um pouco sobre você, seus interesses e o que procura na primeira oportunidade..."></textarea>
+              <p class="hint"><span id="resumoCount">0</span>/600 caracteres — você pode completar depois no perfil.</p>
+            </div>
+
+            <div class="step-actions">
+              <button type="button" class="btn btn-ghost" data-back>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
+                Voltar
+              </button>
+              <button type="submit" class="btn btn-primary" id="submitButton">
+                <span class="btn-label">Criar minha conta</span>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+              </button>
+            </div>
+            <p class="hint" style="text-align:center;margin-top:1rem">Ao criar a conta, você será direcionado ao seu perfil para revisar e completar suas informações.</p>
+          </section>
+
+        </form>
+      </div>
+
+      <p class="auth-footer-note">SkillMatch © 2026 — Projeto de TCC · Desenvolvimento de Sistemas</p>
+    </section>
+  </main>
+
+  <script type="module" src="assets/js/pages/cadastro.js"></script>
+</body>
+</html>

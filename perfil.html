@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meu Perfil — SkillMatch</title>
+  <meta name="description" content="Gerencie seu perfil de candidato no SkillMatch: dados pessoais, formação, habilidades e preferências de vagas." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232563eb'/%3E%3Ccircle cx='22' cy='24' r='7' fill='none' stroke='white' stroke-width='5'/%3E%3Ccircle cx='42' cy='40' r='7' fill='none' stroke='%237dd3fc' stroke-width='5'/%3E%3Cpath d='M27 29l10 6' stroke='white' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/base.css" />
+  <link rel="stylesheet" href="assets/css/auth.css" />
+  <link rel="stylesheet" href="assets/css/profile.css" />
+</head>
+<body>
+
+  <!-- ===== Barra superior ===== -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="logo" href="perfil.html">
+        <span class="logo-mark">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="7" r="3"/><circle cx="17.5" cy="17" r="3"/><circle cx="17.5" cy="7" r="2.2"/><path d="M9 9.5l5.5 5M8.8 5.2l6-1.4M6.5 10v6.5"/></svg>
+        </span>
+        <span class="logo-name">Skill<em>Match</em></span>
+      </a>
+      <nav aria-label="Navegação principal">
+        <a href="perfil.html" class="keep" aria-current="page">Meu perfil</a>
+        <a href="#" class="soon" data-soon>Vagas <span class="badge-soon">em breve</span></a>
+        <a href="#" class="soon" data-soon>Meus matches <span class="badge-soon">em breve</span></a>
+        <button class="btn btn-ghost btn-sm keep" id="logoutButtonTop" style="margin-left:.4rem">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg>
+          Sair
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="profile-layout">
+
+    <!-- ===== Coluna lateral ===== -->
+    <aside class="profile-side">
+      <div class="card identity-card reveal">
+        <div class="avatar" id="avatarInitials">--</div>
+        <h2 id="displayName">Carregando...</h2>
+        <p class="headline" id="displayHeadline"></p>
+        <p class="location" id="displayLocation"></p>
+        <div class="identity-meta" id="displayMeta"></div>
+      </div>
+
+      <div class="card completeness reveal reveal-1">
+        <div class="completeness-head">
+          <div class="ring" role="img" aria-label="Completude do perfil">
+            <svg width="74" height="74" viewBox="0 0 74 74">
+              <defs>
+                <linearGradient id="ringGradient" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stop-color="#2563eb" />
+                  <stop offset="100%" stop-color="#22d3ee" />
+                </linearGradient>
+              </defs>
+              <circle class="ring-track" cx="37" cy="37" r="31" fill="none" stroke-width="8" />
+              <circle class="ring-value" id="ringValue" cx="37" cy="37" r="31" fill="none" stroke-width="8" stroke-dasharray="194.8" stroke-dashoffset="194.8" />
+            </svg>
+            <span class="ring-center" id="ringPercent">0%</span>
+          </div>
+          <div>
+            <strong>Força do seu perfil</strong>
+            <p id="completenessHint">Complete as informações para receber melhores matches.</p>
+          </div>
+        </div>
+        <ul class="completeness-list" id="completenessList"></ul>
+      </div>
+
+      <div class="card side-menu reveal reveal-2">
+        <a href="#dados-pessoais"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg> Dados pessoais</a>
+        <a href="#sobre"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h9"/></svg> Sobre mim</a>
+        <a href="#habilidades"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/></svg> Habilidades</a>
+        <a href="#preferencias"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg> Preferências de vaga</a>
+        <button type="button" id="logoutButtonSide">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg>
+          Sair da conta
+        </button>
+        <button type="button" class="danger" id="scrollDanger">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+          Excluir conta
+        </button>
+      </div>
+    </aside>
+
+    <!-- ===== Conteúdo principal ===== -->
+    <div class="profile-main">
+
+      <!-- Dados pessoais e formação -->
+      <section class="card section-card reveal" id="dados-pessoais">
+        <div class="section-head">
+          <span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg></span>
+          <div>
+            <h3>Dados pessoais e formação</h3>
+            <p>Informações básicas que as empresas verão no seu perfil.</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm view-mode" data-edit="dados-pessoais">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+            Editar
+          </button>
+        </div>
+
+        <div class="view-mode">
+          <div class="info-grid">
+            <div class="info-item"><small>Nome completo</small><p data-view="nome"></p></div>
+            <div class="info-item"><small>E-mail</small><p data-view="email"></p></div>
+            <div class="info-item"><small>Telefone / WhatsApp</small><p data-view="telefone"></p></div>
+            <div class="info-item"><small>Data de nascimento</small><p data-view="dataNascimento"></p></div>
+            <div class="info-item"><small>Cidade / UF</small><p data-view="localidade"></p></div>
+            <div class="info-item"><small>Escolaridade</small><p data-view="escolaridade"></p></div>
+            <div class="info-item"><small>Curso</small><p data-view="curso"></p></div>
+            <div class="info-item"><small>Instituição de ensino</small><p data-view="instituicao"></p></div>
+            <div class="info-item"><small>LinkedIn</small><p data-view="linkedin"></p></div>
+            <div class="info-item"><small>GitHub</small><p data-view="github"></p></div>
+            <div class="info-item full"><small>Portfólio / outro link</small><p data-view="portfolio"></p></div>
+          </div>
+        </div>
+
+        <form class="edit-form" data-form="dados-pessoais" novalidate>
+          <div class="form-row">
+            <div class="field">
+              <label for="edit-nome">Nome completo</label>
+              <input class="input" id="edit-nome" data-field="nome" type="text" />
+              <p class="error-msg">Informe seu nome e sobrenome.</p>
+            </div>
+            <div class="field">
+              <label for="edit-telefone">Telefone / WhatsApp</label>
+              <input class="input" id="edit-telefone" data-field="telefone" type="tel" inputmode="numeric" placeholder="(00) 00000-0000" />
+              <p class="error-msg">Informe um telefone válido com DDD.</p>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label for="edit-dataNascimento">Data de nascimento</label>
+              <input class="input" id="edit-dataNascimento" data-field="dataNascimento" type="date" />
+              <p class="error-msg">Informe uma data válida (idade entre 14 e 100 anos).</p>
+            </div>
+            <div class="field">
+              <label for="edit-escolaridade">Escolaridade</label>
+              <select class="input" id="edit-escolaridade" data-field="escolaridade"><option value="">Selecione</option></select>
+              <p class="error-msg">Selecione sua escolaridade.</p>
+            </div>
+          </div>
+          <div class="form-row-3">
+            <div class="field">
+              <label for="edit-cidade">Cidade</label>
+              <input class="input" id="edit-cidade" data-field="cidade" type="text" />
+              <p class="error-msg">Informe sua cidade.</p>
+            </div>
+            <div class="field">
+              <label for="edit-estado">Estado (UF)</label>
+              <select class="input" id="edit-estado" data-field="estado"><option value="">Selecione</option></select>
+              <p class="error-msg">Selecione o estado.</p>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label for="edit-curso">Curso <span class="optional">(opcional)</span></label>
+              <input class="input" id="edit-curso" data-field="curso" type="text" />
+            </div>
+            <div class="field">
+              <label for="edit-instituicao">Instituição <span class="optional">(opcional)</span></label>
+              <input class="input" id="edit-instituicao" data-field="instituicao" type="text" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label for="edit-linkedin">LinkedIn <span class="optional">(opcional)</span></label>
+              <input class="input" id="edit-linkedin" data-field="linkedin" type="url" placeholder="linkedin.com/in/voce" />
+              <p class="error-msg">Informe uma URL válida.</p>
+            </div>
+            <div class="field">
+              <label for="edit-github">GitHub <span class="optional">(opcional)</span></label>
+              <input class="input" id="edit-github" data-field="github" type="url" placeholder="github.com/voce" />
+              <p class="error-msg">Informe uma URL válida.</p>
+            </div>
+          </div>
+          <div class="field">
+            <label for="edit-portfolio">Portfólio / outro link <span class="optional">(opcional)</span></label>
+            <input class="input" id="edit-portfolio" data-field="portfolio" type="url" placeholder="https://..." />
+            <p class="error-msg">Informe uma URL válida.</p>
+          </div>
+          <div class="edit-actions">
+            <button type="button" class="btn btn-ghost" data-cancel="dados-pessoais">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar alterações</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Sobre mim -->
+      <section class="card section-card reveal reveal-1" id="sobre">
+        <div class="section-head">
+          <span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h9"/></svg></span>
+          <div>
+            <h3>Sobre mim</h3>
+            <p>Um resumo curto faz diferença: conte quem você é e o que procura.</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm view-mode" data-edit="sobre">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+            Editar
+          </button>
+        </div>
+
+        <div class="view-mode">
+          <p class="about-text" data-view="resumo"></p>
+        </div>
+
+        <form class="edit-form" data-form="sobre" novalidate>
+          <div class="field">
+            <label for="edit-resumo">Seu resumo</label>
+            <textarea class="input" id="edit-resumo" data-field="resumo" maxlength="600" rows="5" placeholder="Ex.: Sou estudante do ensino técnico, organizado(a) e comunicativo(a). Busco minha primeira oportunidade para aprender e crescer profissionalmente..."></textarea>
+            <p class="hint"><span id="editResumoCount">0</span>/600 caracteres</p>
+          </div>
+          <div class="edit-actions">
+            <button type="button" class="btn btn-ghost" data-cancel="sobre">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar alterações</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Habilidades -->
+      <section class="card section-card reveal reveal-2" id="habilidades">
+        <div class="section-head">
+          <span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z"/></svg></span>
+          <div>
+            <h3>Minhas habilidades</h3>
+            <p>São elas que geram o seu match com as vagas. Seja honesto(a)!</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm view-mode" data-edit="habilidades">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+            Editar
+          </button>
+        </div>
+
+        <div class="view-mode">
+          <div class="tags-view" data-view="habilidades"></div>
+        </div>
+
+        <form class="edit-form" data-form="habilidades" novalidate>
+          <div class="field skills-editor" id="profileSkillsEditor" style="margin-bottom:0">
+            <label for="profileSkillInput">Adicionar habilidade</label>
+            <div style="display:flex;gap:.6rem">
+              <div class="input-wrap" style="flex:1">
+                <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/></svg>
+                <input class="input skill-input" type="text" id="profileSkillInput" placeholder="Digite e pressione Enter" />
+              </div>
+              <button type="button" class="btn btn-ghost skill-add">Adicionar</button>
+            </div>
+            <div class="tags-container" style="display:flex;flex-wrap:wrap;gap:.45rem;margin-top:.7rem"></div>
+            <div class="skill-suggestions"></div>
+            <p class="hint skill-count"></p>
+          </div>
+          <div class="edit-actions">
+            <button type="button" class="btn btn-ghost" data-cancel="habilidades">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar alterações</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Preferências de vaga -->
+      <section class="card section-card reveal reveal-3" id="preferencias">
+        <div class="section-head">
+          <span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></span>
+          <div>
+            <h3>Preferências de vaga</h3>
+            <p>Usamos estas informações para recomendar as oportunidades certas.</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm view-mode" data-edit="preferencias">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:15px;height:15px"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
+            Editar
+          </button>
+        </div>
+
+        <div class="view-mode">
+          <div class="info-grid">
+            <div class="info-item"><small>Área de interesse</small><p data-view="areaInteresse"></p></div>
+            <div class="info-item"><small>Disponibilidade</small><p data-view="disponibilidade"></p></div>
+            <div class="info-item full"><small>Tipos de vaga de interesse</small><div class="tags-view" data-view="tiposVaga" style="margin-top:.2rem"></div></div>
+          </div>
+        </div>
+
+        <form class="edit-form" data-form="preferencias" novalidate>
+          <div class="form-row">
+            <div class="field">
+              <label for="edit-areaInteresse">Área de interesse</label>
+              <select class="input" id="edit-areaInteresse" data-field="areaInteresse"><option value="">Selecione</option></select>
+              <p class="error-msg">Selecione uma área de interesse.</p>
+            </div>
+            <div class="field">
+              <label for="edit-disponibilidade">Disponibilidade</label>
+              <select class="input" id="edit-disponibilidade" data-field="disponibilidade"><option value="">Selecione</option></select>
+              <p class="error-msg">Selecione sua disponibilidade.</p>
+            </div>
+          </div>
+          <div class="field">
+            <span class="field-label">Tipos de vaga de interesse</span>
+            <div class="pill-group" id="editTiposVagaGroup"></div>
+            <p class="error-msg" id="editTiposVagaError">Selecione pelo menos um tipo de vaga.</p>
+          </div>
+          <div class="edit-actions">
+            <button type="button" class="btn btn-ghost" data-cancel="preferencias">Cancelar</button>
+            <button type="submit" class="btn btn-primary">Salvar alterações</button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Zona de perigo -->
+      <section class="card section-card danger-zone reveal reveal-4" id="zona-perigo">
+        <div class="section-head">
+          <span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg></span>
+          <div>
+            <h3>Zona de perigo</h3>
+            <p>Ações irreversíveis da sua conta.</p>
+          </div>
+        </div>
+        <div class="danger-row">
+          <p><strong>Excluir minha conta</strong>Todos os seus dados serão apagados permanentemente e não poderão ser recuperados.</p>
+          <button type="button" class="btn btn-danger-ghost" id="deleteAccountButton">Excluir conta</button>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Modal de confirmação -->
+  <div class="modal-backdrop" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal">
+      <div class="modal-icon" id="modalIcon"></div>
+      <h3 id="modalTitle"></h3>
+      <p id="modalText"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="modalCancel">Cancelar</button>
+        <button type="button" class="btn btn-primary" id="modalConfirm">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="assets/js/pages/perfil.js"></script>
+</body>
+</html>
