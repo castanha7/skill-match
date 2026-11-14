@@ -4,11 +4,12 @@ import { Formatters } from "../utils/formatters.js";
 import { CATALOGS } from "../config/app.config.js";
 import { AuthService } from "../services/auth.service.js";
 import { UserService } from "../services/user.service.js";
+import { PlatformService } from "../services/platform.service.js";
 import { createSkillsEditor } from "../components/skills-editor.js";
 
 /* ---------- Proteção de rota ---------- */
-AuthService.seedDemoUser();
-const session = AuthService.requireAuth();
+await AuthService.seedDemoUser();
+const session = AuthService.requireAuth("candidate");
 
 let currentUser = null;
 
@@ -57,9 +58,65 @@ function setViewText(key, value) {
   el.classList.toggle("empty", Boolean(isEmpty));
 }
 
+function setViewLink(key, value) {
+  const el = $(`[data-view="${key}"]`);
+  if (!el) return;
+  const raw = String(value || "").trim();
+  if (!raw) {
+    el.textContent = "Não informado";
+    el.classList.add("empty");
+    return;
+  }
+  try {
+    const url = new URL(raw.toLowerCase().startsWith("http://") || raw.toLowerCase().startsWith("https://") ? raw : `https://${raw}`);
+    if (!["http:", "https:"].includes(url.protocol)) throw new Error("invalid protocol");
+    const link = document.createElement("a");
+    link.href = url.href;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = raw;
+    el.replaceChildren(link);
+    el.classList.remove("empty");
+  } catch {
+    el.textContent = raw;
+    el.classList.add("empty");
+  }
+}
+
+function setViewList(key, items) {
+  const el = $(`[data-view="${key}"]`);
+  if (!el) return;
+  el.replaceChildren();
+  if (!Array.isArray(items) || items.length === 0) {
+    const empty = document.createElement("span");
+    empty.className = "empty-state";
+    empty.textContent = "Não informado";
+    el.appendChild(empty);
+    return;
+  }
+  const list = document.createElement("ul");
+  items.forEach((item) => {
+    const li = document.createElement("li");
+    li.textContent = item;
+    list.appendChild(li);
+  });
+  el.appendChild(list);
+}
+
 function renderProfile(user) {
   /* Cartão de identidade */
-  $("#avatarInitials").textContent = Formatters.initials(user.nome);
+  const avatar = $("#avatarInitials");
+  avatar.replaceChildren();
+  if (["data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64,"].some((prefix) => String(user.fotoDataUrl || "").toLowerCase().startsWith(prefix))) {
+    const image = document.createElement("img");
+    image.src = user.fotoDataUrl;
+    image.alt = `Foto de ${user.nome}`;
+    avatar.appendChild(image);
+  } else {
+    avatar.textContent = Formatters.initials(user.nome);
+  }
+  $("#removePhotoButton").hidden = !user.fotoDataUrl;
+  $("#displayName").textContent = user.nome;
   $("#displayName").textContent = user.nome;
   $("#displayHeadline").textContent = user.curso
     ? `${user.curso}${user.areaInteresse ? ` · ${user.areaInteresse}` : ""}`
@@ -91,9 +148,11 @@ function renderProfile(user) {
   setViewText("escolaridade", user.escolaridade);
   setViewText("curso", user.curso);
   setViewText("instituicao", user.instituicao);
-  setViewText("linkedin", user.linkedin);
-  setViewText("github", user.github);
-  setViewText("portfolio", user.portfolio);
+  setViewLink("linkedin", user.linkedin);
+  setViewLink("github", user.github);
+  setViewLink("portfolio", user.portfolio);
+  setViewList("cursos", user.cursos);
+  setViewList("experiencias", user.experiencias);
   setViewText("areaInteresse", user.areaInteresse);
   setViewText("disponibilidade", user.disponibilidade);
 
@@ -162,7 +221,8 @@ function renderCompleteness(user) {
 function fillEditForm(sectionId) {
   const formEl = $(`[data-form="${sectionId}"]`);
   $$("[data-field]", formEl).forEach((input) => {
-    input.value = currentUser[input.dataset.field] ?? "";
+    const value = currentUser[input.dataset.field];
+    input.value = Array.isArray(value) ? value.join("\n") : (value ?? "");
     clearFieldError(input);
   });
   if (sectionId === "dados-pessoais") {
@@ -228,6 +288,7 @@ const sectionValidators = {
   },
   sobre: () => true,
   habilidades: () => true,
+  "cursos-experiencias": () => true,
   preferencias: () => {
     let ok = true;
     ok = validateInput($("#edit-areaInteresse"), Validators.required($("#edit-areaInteresse").value), "Selecione uma área de interesse.") && ok;
@@ -253,6 +314,11 @@ $$(".edit-form").forEach((formEl) => {
     if (sectionId === "preferencias") {
       data.tiposVaga = $$('input[name="editTiposVaga"]:checked').map((i) => i.value);
     }
+    if (sectionId === "cursos-experiencias") {
+      ["cursos", "experiencias"].forEach((key) => {
+        data[key] = String(data[key] || "").split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+      });
+    }
 
     const submitBtn = formEl.querySelector('[type="submit"]');
     submitBtn.disabled = true;
@@ -260,15 +326,8 @@ $$(".edit-form").forEach((formEl) => {
     submitBtn.innerHTML = '<span class="spinner"></span> Salvando...';
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 450)); // simula resposta da API
       currentUser = await UserService.updateProfile(session.userId, data, session.token);
-
-      /* Mantém o nome da sessão sincronizado */
-      if (data.nome && data.nome !== session.nome) {
-        const fresh = AuthService.getSession();
-        if (fresh) { fresh.nome = data.nome; session.nome = data.nome; }
-      }
-
+      AuthService.updateSessionProfile(currentUser);
       renderProfile(currentUser);
       setEditing(sectionId, false);
       showToast("Perfil atualizado com sucesso!");
@@ -310,6 +369,43 @@ $("#modalConfirm").addEventListener("click", async () => {
   closeModal();
 });
 
+const photoInput = $("#profilePhotoInput");
+photoInput.addEventListener("change", () => {
+  const file = photoInput.files?.[0];
+  if (!file) return;
+  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 700 * 1024) {
+    showToast("Escolha uma imagem PNG, JPEG ou WebP de até 700 KB.", "error");
+    photoInput.value = "";
+    return;
+  }
+  const reader = new FileReader();
+  reader.onerror = () => showToast("Não foi possível ler esta imagem.", "error");
+  reader.onload = async () => {
+    try {
+      currentUser = await UserService.updateProfile(session.userId, { fotoDataUrl: String(reader.result) }, session.token);
+      AuthService.updateSessionProfile(currentUser);
+      renderProfile(currentUser);
+      showToast("Foto salva localmente neste navegador.", "success");
+    } catch (error) {
+      showToast(error.message, "error");
+    } finally {
+      photoInput.value = "";
+    }
+  };
+  reader.readAsDataURL(file);
+});
+$("#removePhotoButton").addEventListener("click", () => openModal({
+  title: "Remover foto do perfil?",
+  text: "A imagem demonstrativa será removida do armazenamento deste navegador.",
+  confirmLabel: "Remover foto",
+  onConfirm: async () => {
+    currentUser = await UserService.updateProfile(session.userId, { fotoDataUrl: "" }, session.token);
+    AuthService.updateSessionProfile(currentUser);
+    renderProfile(currentUser);
+    showToast("Foto removida.", "success");
+  },
+}));
+
 /* ---------- Sair / excluir conta ---------- */
 function handleLogout() {
   openModal({
@@ -332,6 +428,7 @@ $("#deleteAccountButton").addEventListener("click", () => {
     confirmLabel: "Excluir definitivamente",
     danger: true,
     onConfirm: async () => {
+      PlatformService.removeUserData(session.userId);
       await UserService.deleteAccount(session.userId, session.token);
       AuthService.logout();
       showToast("Sua conta foi excluída.", "info");
@@ -341,14 +438,6 @@ $("#deleteAccountButton").addEventListener("click", () => {
 });
 $("#scrollDanger").addEventListener("click", () => {
   document.getElementById("zona-perigo").scrollIntoView({ behavior: "smooth" });
-});
-
-/* Links de funcionalidades futuras */
-$$("[data-soon]").forEach((link) => {
-  link.addEventListener("click", (event) => {
-    event.preventDefault();
-    showToast("Esta área será desenvolvida nas próximas etapas do TCC 🚧", "info");
-  });
 });
 
 /* ---------- Carregamento inicial ---------- */

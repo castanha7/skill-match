@@ -1,0 +1,13 @@
+{
+  "name": "skillmatch-static",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Protótipo estático SkillMatch com testes de interface e serviços",
+  "scripts": {
+    "test": "node --test tests/*.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}

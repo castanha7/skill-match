@@ -6,11 +6,11 @@ import { AuthService } from "../services/auth.service.js";
 import { initPasswordToggles } from "../components/password-toggle.js";
 import { createSkillsEditor } from "../components/skills-editor.js";
 
-AuthService.seedDemoUser();
+await AuthService.seedDemoUser();
 initPasswordToggles();
 
 if (AuthService.isAuthenticated()) {
-  window.location.replace("perfil.html");
+  window.location.replace("painel.html");
 }
 
 /* ---------- Preenche os selects/pills a partir dos catálogos ---------- */
@@ -207,10 +207,9 @@ form.addEventListener("submit", async (event) => {
   };
 
   try {
-    await new Promise((resolve) => setTimeout(resolve, 700)); // simula resposta da API
     await AuthService.register(dados);
     showToast("Conta criada com sucesso! Bem-vindo(a) ao SkillMatch 🎉");
-    setTimeout(() => window.location.replace("perfil.html?bemvindo=1"), 600);
+    setTimeout(() => window.location.replace("painel.html?bemvindo=1"), 600);
   } catch (error) {
     $("#registerAlertText").textContent = error.message;
     alertError.classList.add("show");

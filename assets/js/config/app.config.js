@@ -1,39 +1,31 @@
 /**
- * SkillMatch — Configuração global da aplicação
- * ------------------------------------------------------------
- * FUTURA INTEGRAÇÃO COM BACKEND (Node.js + Express + MySQL):
- * quando a API estiver pronta, basta:
- *   1. Alterar `useApi` para `true`;
- *   2. Ajustar `apiBaseUrl` para o endereço do servidor.
- * Nenhuma tela precisará ser reescrita, pois todas as páginas
- * consomem apenas os serviços (auth.service / user.service).
+ * Configuração do frontend SkillMatch.
+ * O modo de demonstração usa somente armazenamento do navegador; isso NÃO é
+ * autenticação segura nem persistência compartilhada entre dispositivos.
+ * A API deve ser implantada separadamente antes de habilitar useApi.
  */
 export const APP_CONFIG = {
   appName: "SkillMatch",
   slogan: "Suas habilidades. Sua oportunidade.",
-
-  /** true = chama a API REST | false = usa localStorage (etapa atual) */
   useApi: false,
-
-  /** Endereço base da futura API Express (ver docs/INTEGRACAO-BACKEND.md) */
-  apiBaseUrl: "http://localhost:3000/api",
-
-  /** Chaves utilizadas no localStorage (prefixadas para não colidir) */
+  // Não apontar para localhost em uma publicação estática. Defina por ambiente
+  // quando a API Express estiver implantada, nunca com segredos no frontend.
+  apiBaseUrl: "",
   storageKeys: {
     users: "skillmatch:users",
     session: "skillmatch:session",
     seeded: "skillmatch:seeded",
+    platform: "skillmatch:platform",
+    passwordReset: "skillmatch:demo-password-reset",
   },
-
-  /** Tempo de sessão "lembrar-me" (7 dias) em milissegundos */
   sessionMaxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
-/** Catálogos usados nos formulários (futuramente virão de tabelas do MySQL) */
+/** Catálogos usados pelos formulários demonstrativos. */
 export const CATALOGS = {
   estados: [
-    "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG",
-    "PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO",
+    "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
+    "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
   ],
   escolaridades: [
     "Ensino Fundamental (cursando)",
@@ -61,6 +53,7 @@ export const CATALOGS = {
     "Outra",
   ],
   tiposVaga: ["Jovem Aprendiz", "Estágio", "Primeiro Emprego", "Trainee"],
+  modalidades: ["Presencial", "Híbrido", "Remoto"],
   disponibilidades: [
     "Meio período — manhã",
     "Meio período — tarde",
@@ -76,4 +69,16 @@ export const CATALOGS = {
     "Canva", "HTML e CSS", "JavaScript", "Python", "Lógica de programação",
     "Banco de dados", "Vendas", "Caixa e pagamentos", "Estoque e logística",
   ],
+};
+
+export const DEMO_CREDENTIALS = [
+  { role: "candidate", label: "Candidato", email: "demo@skillmatch.com", password: "Skill@123" },
+  { role: "company", label: "Empresa", email: "empresa@skillmatch.com", password: "Skill@123" },
+  { role: "admin", label: "Administração", email: "admin@skillmatch.com", password: "Admin@123" },
+];
+
+export const USER_ROLES = {
+  candidate: "Candidato",
+  company: "Empresa",
+  admin: "Administração",
 };

@@ -53,10 +53,10 @@
           <div class="match-card-head">
             <div class="match-avatar">MC</div>
             <div>
-              <strong>Estágio em Suporte de TI</strong>
-              <small>Empresa de tecnologia • Curitiba, PR</small>
+              <strong>Compatibilidade demonstrativa</strong>
+              <small>Empresa fictícia · sem vaga confirmada</small>
             </div>
-            <div class="match-score"><strong>92%</strong><small>Match</small></div>
+              <div class="match-score"><strong>92%</strong><small>Exemplo</small></div>
           </div>
           <div class="match-bar"><span></span></div>
           <div class="match-tags"><span>JavaScript</span><span>Comunicação</span><span>Pacote Office</span></div>
@@ -64,9 +64,9 @@
       </div>
 
       <div class="brand-stats reveal reveal-4">
-        <div><strong>+1.200</strong><small>jovens cadastrados</small></div>
-        <div><strong>+350</strong><small>vagas publicadas</small></div>
-        <div><strong>+180</strong><small>empresas parceiras</small></div>
+        <div><strong>Seu perfil</strong><small>mostre suas habilidades</small></div>
+        <div><strong>Seu radar</strong><small>explore exemplos locais</small></div>
+        <div><strong>Sua jornada</strong><small>acompanhe seu progresso</small></div>
       </div>
     </section>
 
@@ -86,6 +86,15 @@
         <div class="reveal">
           <h2>Bem-vindo de volta 👋</h2>
           <p class="lead">Entre com sua conta para continuar sua jornada rumo à primeira oportunidade.</p>
+        </div>
+
+        <div class="field role-select-field">
+          <label for="loginRole">Acessar como</label>
+          <select class="input" id="loginRole" name="role" autocomplete="off">
+            <option value="candidate">Candidato</option>
+            <option value="company">Empresa</option>
+            <option value="admin">Administração</option>
+          </select>
         </div>
 
         <div class="alert alert-error" id="loginAlert" role="alert">
@@ -125,7 +134,7 @@
               <input type="checkbox" id="lembrarMe" />
               <span>Lembrar-me</span>
             </label>
-            <a class="link-sm" href="#" id="forgotLink">Esqueci minha senha</a>
+            <button class="link-sm link-button" type="button" id="forgotLink">Esqueci minha senha</button>
           </div>
 
           <button type="submit" class="btn btn-primary btn-block reveal reveal-3" id="loginButton">
@@ -138,17 +147,75 @@
 
         <div class="demo-box reveal reveal-4">
           <div class="demo-info">
-            <strong>Conta de demonstração</strong>
-            <code>demo@skillmatch.com</code> · <code>Skill@123</code>
-            <small>Perfil fictício criado automaticamente para você testar a plataforma.</small>
+            <strong>Acessos públicos de demonstração</strong>
+            <small>Contas e dados fictícios, salvos apenas neste navegador. A área administrativa é somente uma simulação e não protege um serviço real.</small>
           </div>
-          <button type="button" class="btn btn-ghost btn-sm" id="fillDemo">Preencher dados</button>
+          <div class="demo-account-grid">
+            <button type="button" class="demo-account-button" data-demo-role="candidate">
+              <span>Candidato</span><code>demo@skillmatch.com · Skill@123</code><b>Usar acesso</b>
+            </button>
+            <button type="button" class="demo-account-button" data-demo-role="company">
+              <span>Empresa</span><code>empresa@skillmatch.com · Skill@123</code><b>Usar acesso</b>
+            </button>
+            <button type="button" class="demo-account-button" data-demo-role="admin">
+              <span>Administração</span><code>admin@skillmatch.com · Admin@123</code><b>Usar acesso</b>
+            </button>
+          </div>
         </div>
       </div>
 
       <p class="auth-footer-note">SkillMatch © 2026 — Projeto de TCC · Desenvolvimento de Sistemas</p>
     </section>
   </main>
+
+  <div class="modal-backdrop" id="forgotPasswordModal" role="dialog" aria-modal="true" aria-labelledby="forgotTitle">
+    <div class="modal password-reset-modal">
+      <button type="button" class="modal-close" id="forgotClose" aria-label="Fechar recuperação">×</button>
+      <div class="modal-icon modal-icon--info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+      <h3 id="forgotTitle">Recuperar acesso</h3>
+      <p>Este protótipo não envia e-mails. Para testar o fluxo, será gerado um código local temporário, identificado como demonstração.</p>
+      <div class="alert alert-error" id="resetError" role="alert"><span id="resetErrorText"></span></div>
+      <div class="alert alert-success" id="resetCodeNotice" role="status"><span id="resetCodeText"></span></div>
+      <form id="forgotRequestForm" novalidate>
+        <div class="field">
+          <label for="resetEmail">E-mail cadastrado</label>
+          <input class="input" type="email" id="resetEmail" autocomplete="email" required />
+          <p class="error-msg">Informe um e-mail válido.</p>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="forgotCancel">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Gerar código demonstrativo</button>
+        </div>
+      </form>
+      <form id="forgotCompleteForm" novalidate hidden>
+        <div class="field">
+          <label for="resetCode">Código recebido</label>
+          <input class="input" type="text" id="resetCode" inputmode="numeric" maxlength="6" autocomplete="one-time-code" required />
+          <p class="error-msg">Informe o código de seis dígitos.</p>
+        </div>
+        <div class="field">
+          <label for="resetNewPassword">Nova senha</label>
+          <div class="input-wrap">
+            <input class="input has-toggle" type="password" id="resetNewPassword" autocomplete="new-password" required />
+            <button type="button" class="toggle-password" data-target="resetNewPassword" aria-label="Mostrar senha"><svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg><svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 2 20 20M9.9 4.2A9.5 9.5 0 0 1 12 4c6.5 0 10 8 10 8a13 13 0 0 1-1.7 2.7M6.6 6.6A13.5 13.5 0 0 0 2 12s3.5 8 10 8a9.7 9.7 0 0 0 5.4-1.6"/></svg></button>
+          </div>
+          <p class="error-msg">Use pelo menos 8 caracteres, com letras e números.</p>
+        </div>
+        <div class="field">
+          <label for="resetConfirmPassword">Confirmar nova senha</label>
+          <div class="input-wrap">
+            <input class="input has-toggle" type="password" id="resetConfirmPassword" autocomplete="new-password" required />
+            <button type="button" class="toggle-password" data-target="resetConfirmPassword" aria-label="Mostrar senha"><svg class="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg><svg class="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 2 20 20M9.9 4.2A9.5 9.5 0 0 1 12 4c6.5 0 10 8 10 8a13 13 0 0 1-1.7 2.7M6.6 6.6A13.5 13.5 0 0 0 2 12s3.5 8 10 8a9.7 9.7 0 0 0 5.4-1.6"/></svg></button>
+          </div>
+          <p class="error-msg">As senhas não coincidem.</p>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" id="resetBack">Voltar</button>
+          <button type="submit" class="btn btn-primary">Salvar nova senha</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <script type="module" src="assets/js/pages/login.js"></script>
 </body>
