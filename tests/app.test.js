@@ -129,7 +129,7 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
   });
 
   await t.test("login, mostrar senha e recuperação local de senha executam", async () => {
-    setDocument(dom, "index.html");
+    setDocument(dom, "login.html");
     await importPageModule("assets/js/pages/login.js", "login");
     click('.toggle-password[data-target="senha"]');
     assert.equal(document.querySelector("#senha").type, "text");
@@ -175,10 +175,16 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     assert.equal(document.querySelectorAll("#appNav [data-view]").length, 8);
 
     click('#appNav [data-view="radar"]');
-    assert.match(document.querySelector("#appContent").textContent, /Empresas demonstrativas encontradas/);
+    assert.match(document.querySelector("#appContent").textContent, /Empresas no catálogo demonstrativo/);
     setValue("radarRadius", "25");
     change(document.querySelector("#radarRadius"));
     assert.equal(PlatformService.getCandidateSettings("usr-demo-candidate").distanceMaxKm, 25);
+    setValue("radarCity", "Araucária");
+    change(document.querySelector("#radarCity"));
+    assert.equal(PlatformService.getCandidateSettings("usr-demo-candidate").radarCity, "Araucária");
+    setValue("radarType", "Jovem Aprendiz");
+    change(document.querySelector("#radarType"));
+    assert.equal(PlatformService.getCandidateSettings("usr-demo-candidate").radarType, "Jovem Aprendiz");
 
     click('#appNav [data-view="jobs"]');
     assert.equal(document.querySelectorAll("#jobResults .job-card").length, 4);
@@ -277,6 +283,36 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     const user = await UserService.getById("usr-demo-candidate");
     assert.deepEqual(user.cursos, ["Curso complementar de teste", "Planilhas demonstrativas"]);
     assert.deepEqual(user.experiencias, ["Projeto escolar de integração"]);
+  });
+
+  await t.test("cadastro empresarial valida, salva dados locais e cria acesso protegido por hash", async () => {
+    AuthService.logout();
+    setDocument(dom, "cadastro-empresa.html");
+    await importPageModule("assets/js/pages/cadastro-empresa.js", "company-signup");
+    setValue("companyName", "Oficina Horizonte Ltda.");
+    setValue("companySector", "Serviços");
+    setValue("companyWebsite", "https://horizonte.example");
+    setValue("companyDescription", "Empresa demonstrativa de serviços para teste de cadastro.");
+    setValue("companyCity", "Curitiba");
+    setValue("companyState", "PR");
+    setValue("contactName", "Lucas Ribeiro");
+    setValue("companyEmail", "contato.empresa@skillmatch.test");
+    setValue("companyPassword", "EmpresaTeste@123");
+    setValue("companyPasswordConfirm", "EmpresaTeste@123");
+    document.querySelector("#companyTerms").checked = true;
+    submit(document.querySelector("#companyRegisterForm"));
+    await waitFor(() => UserService.listByRole("company").some((user) => user.email === "contato.empresa@skillmatch.test"), "A conta empresarial não foi criada.");
+    const companyUser = UserService.listByRole("company").find((user) => user.email === "contato.empresa@skillmatch.test");
+    assert.equal(AuthService.getSession()?.role, "company");
+    assert.match(JSON.parse(localStorage.getItem(APP_CONFIG.storageKeys.users)).find((user) => user.id === companyUser.id).senhaHash, /^pbkdf2\$/);
+    assert.equal(PlatformService.getCompany(companyUser.companyId).name, "Oficina Horizonte Ltda.");
+    assert.equal(PlatformService.getCompany(companyUser.companyId).isDemo, true);
+    await assert.rejects(AuthService.login("contato.empresa@skillmatch.test", "EmpresaTeste@123", false, "candidate"), /área de empresa/i);
+    setDocument(dom, "painel.html");
+    await importPageModule("assets/js/pages/painel.js", "registered-company-panel");
+    assert.equal(document.querySelector("#sidebarRole").textContent, "Empresa");
+    assert.equal(document.querySelector("#sidebarName").textContent, "Lucas Ribeiro");
+    AuthService.logout();
   });
 
   await t.test("empresa publica, consulta candidatos e atualiza candidatura", async () => {

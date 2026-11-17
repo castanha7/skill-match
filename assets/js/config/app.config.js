@@ -10,7 +10,7 @@ export const APP_CONFIG = {
   useApi: false,
   // Não apontar para localhost em uma publicação estática. Defina por ambiente
   // quando a API Express estiver implantada, nunca com segredos no frontend.
-  apiBaseUrl: "",
+  apiBaseUrl: globalThis.document?.querySelector('meta[name="skillmatch-api-base"]')?.content?.trim() || "",
   storageKeys: {
     users: "skillmatch:users",
     session: "skillmatch:session",
