@@ -208,6 +208,17 @@
 .search-row .input { max-width: 400px; }
 
 .company-found-card { display: grid; grid-template-columns: 44px minmax(0,1fr) auto; align-items: start; gap: .75rem; padding: 1rem; background: #fff; border: 1px solid var(--border); border-radius: 14px; }
+.radar-filter-fields { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.75rem;margin-top:1rem; }
+.radar-filter-fields .field { margin:0; }
+.radar-filter-fields label { display:block;font-size:.75rem;font-weight:700;color:var(--navy-800);margin-bottom:.35rem; }
+.radar-filter-fields .input { padding:.65rem .75rem;font-size:.83rem; }
+.radar-map-note { display:flex;align-items:center;gap:.9rem;margin-top:1rem; }
+.radar-map-note h3 { color:var(--navy-900);font-size:.9rem; }
+.radar-map-note p { color:var(--text-muted);font-size:.78rem;margin-top:.2rem; }
+.map-note-icon { width:40px;height:40px;display:grid;place-items:center;flex:none;border-radius:12px;background:#edf4ff;color:var(--blue-600);font-size:1.4rem; }
+.radar-map-note > div:nth-child(2) { flex:1; }
+@media (max-width:900px) { .radar-filter-fields { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media (max-width:520px) { .radar-filter-fields { grid-template-columns:1fr; } .radar-map-note { align-items:flex-start;flex-wrap:wrap; } .radar-map-note .demo-tag { margin-left:3.25rem; } }
 .company-found-icon { width: 42px; height: 42px; border-radius: 13px; display: grid; place-items: center; color: var(--blue-600); background: #edf4ff; }
 .company-found-icon svg { width: 20px; height: 20px; }
 .company-found-card h3 { color: var(--navy-900); font-size: .9rem; }

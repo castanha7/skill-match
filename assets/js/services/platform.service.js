@@ -288,6 +288,37 @@ export const PlatformService = {
     return company ? { ...company } : null;
   },
 
+  createCompany(companyId, ownerId, fields) {
+    return update((state) => {
+      if (state.companies.some((entry) => entry.id === companyId || entry.ownerId === ownerId)) {
+        throw new Error("Esta conta já possui um cadastro empresarial.");
+      }
+      const name = String(fields.name ?? "").trim();
+      const city = String(fields.city ?? "").trim();
+      const region = String(fields.state ?? "").trim().toUpperCase();
+      if (!name || !city || !/^[A-Z]{2}$/.test(region)) throw new Error("Informe nome, cidade e UF válidos para a empresa.");
+      const company = {
+        id: companyId,
+        ownerId,
+        name,
+        sector: String(fields.sector ?? "").trim(),
+        description: String(fields.description ?? "").trim(),
+        city,
+        state: region,
+        address: "",
+        website: String(fields.website ?? "").trim(),
+        contactEmail: String(fields.contactEmail ?? "").trim().toLowerCase(),
+        phone: "",
+        verified: false,
+        active: true,
+        isDemo: true,
+        createdAt: new Date().toISOString(),
+      };
+      state.companies.push(company);
+      return { ...company };
+    });
+  },
+
   saveCompany(companyId, ownerId, fields) {
     return update((state) => {
       const company = state.companies.find((entry) => entry.id === companyId);
@@ -561,7 +592,7 @@ export const PlatformService = {
 
   getCandidateSettings(userId) {
     const settings = ensureState().preferences[userId];
-    return { distanceMaxKm: 50, visibleToCompanies: true, notifyNewJobs: true, ...(settings || {}) };
+    return { distanceMaxKm: 50, visibleToCompanies: true, notifyNewJobs: true, radarCity: null, radarState: null, radarNeighborhood: "", radarType: "", radarArea: "", radarModality: "", ...(settings || {}) };
   },
 
   saveCandidateSettings(userId, settings) {
@@ -571,6 +602,12 @@ export const PlatformService = {
         distanceMaxKm: Math.min(500, Math.max(1, Number(settings.distanceMaxKm) || 50)),
         visibleToCompanies: Boolean(settings.visibleToCompanies),
         notifyNewJobs: Boolean(settings.notifyNewJobs),
+        radarCity: String(settings.radarCity ?? state.preferences[userId]?.radarCity ?? "").trim().slice(0, 120),
+        radarState: String(settings.radarState ?? state.preferences[userId]?.radarState ?? "").trim().toUpperCase().slice(0, 2),
+        radarNeighborhood: String(settings.radarNeighborhood ?? state.preferences[userId]?.radarNeighborhood ?? "").trim().slice(0, 120),
+        radarType: String(settings.radarType ?? state.preferences[userId]?.radarType ?? "").trim().slice(0, 80),
+        radarArea: String(settings.radarArea ?? state.preferences[userId]?.radarArea ?? "").trim().slice(0, 100),
+        radarModality: String(settings.radarModality ?? state.preferences[userId]?.radarModality ?? "").trim().slice(0, 40),
         updatedAt: new Date().toISOString(),
       };
       return { ...state.preferences[userId] };

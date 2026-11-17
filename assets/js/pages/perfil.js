@@ -414,7 +414,7 @@ function handleLogout() {
     confirmLabel: "Sim, sair",
     onConfirm: () => {
       AuthService.logout();
-      window.location.replace("index.html");
+      window.location.replace("login.html");
     },
   });
 }
@@ -432,7 +432,7 @@ $("#deleteAccountButton").addEventListener("click", () => {
       await UserService.deleteAccount(session.userId, session.token);
       AuthService.logout();
       showToast("Sua conta foi excluída.", "info");
-      setTimeout(() => window.location.replace("index.html"), 400);
+      setTimeout(() => window.location.replace("login.html"), 400);
     },
   });
 });
@@ -446,7 +446,7 @@ $("#scrollDanger").addEventListener("click", () => {
   currentUser = await UserService.getById(session.userId, session.token);
   if (!currentUser) {
     AuthService.logout();
-    window.location.replace("index.html");
+    window.location.replace("login.html");
     return;
   }
   renderProfile(currentUser);

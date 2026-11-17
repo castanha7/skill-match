@@ -202,6 +202,23 @@ function jobScore(job, candidate) {
   return Math.max(10, Math.min(99, score));
 }
 
+function explainJobMatch(job, candidate) {
+  const requirements = Array.isArray(job.requirements) ? job.requirements : [];
+  const skills = new Set((candidate.habilidades || []).map(normalizedText));
+  const matched = requirements.filter((item) => skills.has(normalizedText(item)));
+  const missing = requirements.filter((item) => !skills.has(normalizedText(item)));
+  const reasons = [];
+  if (candidate.areaInteresse && normalizedText(candidate.areaInteresse) === normalizedText(job.area)) reasons.push(`a área de interesse (${job.area}) combina com a vaga`);
+  if ((candidate.tiposVaga || []).some((type) => normalizedText(type) === normalizedText(job.type))) reasons.push(`o tipo de oportunidade (${job.type}) está entre suas preferências`);
+  if (matched.length) reasons.push(`você já cadastrou ${matched.length} requisito(s) pedido(s)`);
+  if (candidate.estado && candidate.estado === job.state) reasons.push(`a vaga está no mesmo estado do seu perfil (${job.state})`);
+  if (!reasons.length) reasons.push("a vaga foi incluída para você explorar; atualize habilidades e interesses para uma estimativa mais útil");
+  const improvement = missing.length
+    ? `Você pode desenvolver: ${missing.join(", ")}. Procure cursos, projetos escolares ou atividades práticas relacionadas.`
+    : "Seus requisitos listados já estão no perfil. Destaque-os com exemplos concretos em projetos, cursos ou atividades.";
+  return { matched, missing, reasons, improvement };
+}
+
 function candidateJobMeta(job) {
   return {
     score: jobScore(job, currentUser),
@@ -378,27 +395,48 @@ function renderRadar() {
   const companies = PlatformService.getCompanies();
   const publishedJobs = PlatformService.getPublishedJobs();
   const maxDistance = Number(settings.distanceMaxKm) || 50;
+  const city = settings.radarCity ?? currentUser.cidade ?? "";
+  const state = settings.radarState ?? currentUser.estado ?? "";
+  const neighborhood = settings.radarNeighborhood || "";
+  const origin = { city, state };
   const visibleJobs = publishedJobs.filter((job) => {
-    const distance = PlatformService.distanceEstimate(currentUser, job);
-    return distance === null || distance <= maxDistance;
+    const distance = PlatformService.distanceEstimate(origin, job);
+    const cityMatch = !city || normalizedText(`${job.city} ${job.state}`).includes(normalizedText(city));
+    const stateMatch = !state || !job.state || normalizedText(job.state) === normalizedText(state);
+    const neighborhoodMatch = !neighborhood || normalizedText(`${job.address || ""} ${job.city || ""}`).includes(normalizedText(neighborhood));
+    const withinRadius = distance === null || distance <= maxDistance;
+    return cityMatch && stateMatch && neighborhoodMatch && withinRadius
+      && (!settings.radarType || job.type === settings.radarType)
+      && (!settings.radarArea || job.area === settings.radarArea)
+      && (!settings.radarModality || job.modality === settings.radarModality);
   }).sort((a, b) => jobScore(b, currentUser) - jobScore(a, currentUser));
-  const sortedCompanies = companies.map((company) => ({ company, distance: PlatformService.distanceEstimate(currentUser, company) }))
+  const sortedCompanies = companies.map((company) => ({ company, distance: PlatformService.distanceEstimate(origin, company) }))
     .sort((a, b) => (a.distance ?? Number.MAX_SAFE_INTEGER) - (b.distance ?? Number.MAX_SAFE_INTEGER));
   const radiusSelect = `<select class="input" id="radarRadius" aria-label="Distância máxima">${DISTANCE_OPTIONS.map((distance) => `<option value="${distance}" ${maxDistance === distance ? "selected" : ""}>${distance} km</option>`).join("")}</select>`;
-  return `<section class="panel-card" style="margin-bottom:1rem">
-    <div class="card-head"><div class="card-head-copy"><h2>Como o radar funciona nesta versão</h2><p class="panel-card-subtitle">Usa sua cidade/UF, área, tipos de vaga, escolaridade e habilidades para ordenar os exemplos. A distância é aproximada entre centros urbanos conhecidos; sem Google Maps.</p></div><span class="demo-tag">Sem integração externa</span></div>
-    <div class="form-row" style="align-items:end"><div><label for="radarRadius" style="display:block;font-size:.78rem;font-weight:700;color:var(--navy-800);margin-bottom:.35rem">Distância máxima desejada</label>${radiusSelect}</div><p class="form-help">Ajuste este valor em Configurações para manter sua preferência. Cidades sem coordenadas demonstrativas aparecem como distância não calculada.</p></div>
-    ${!currentUser.cidade || !currentUser.estado ? `<p class="form-help" style="margin-top:.6rem">Complete sua cidade e estado em Meu perfil para estimativas regionais melhores.</p>` : ""}
+  const stateSelect = `<select class="input" id="radarState" aria-label="Estado">${optionList(CATALOGS.estados, state, "Todas as UFs")}</select>`;
+  return `<section class="panel-card radar-filter-card" style="margin-bottom:1rem">
+    <div class="card-head"><div class="card-head-copy"><h2>Configure seu Radar</h2><p class="panel-card-subtitle">Ajuste local, distância e preferências para filtrar os anúncios do catálogo.</p></div><span class="demo-tag">Fontes externas não conectadas</span></div>
+    <div class="radar-filter-fields">
+      <div class="field"><label for="radarCity">Cidade</label><input class="input" id="radarCity" value="${escapeHtml(city)}" placeholder="Ex.: Araucária" /></div>
+      <div class="field"><label for="radarState">Estado</label>${stateSelect}</div>
+      <div class="field"><label for="radarNeighborhood">Bairro / região</label><input class="input" id="radarNeighborhood" value="${escapeHtml(neighborhood)}" placeholder="Ex.: Centro" /></div>
+      <div class="field"><label for="radarRadius">Distância máxima</label>${radiusSelect}</div>
+      <div class="field"><label for="radarType">Tipo de oportunidade</label><select class="input" id="radarType">${optionList(CATALOGS.tiposVaga, settings.radarType || "", "Todos os tipos")}</select></div>
+      <div class="field"><label for="radarArea">Área de interesse</label><select class="input" id="radarArea">${optionList(CATALOGS.areasInteresse, settings.radarArea || "", "Todas as áreas")}</select></div>
+      <div class="field"><label for="radarModality">Modalidade</label><select class="input" id="radarModality">${optionList(CATALOGS.modalidades, settings.radarModality || "", "Todas as modalidades")}</select></div>
+    </div>
+    <p class="form-help">Distância aproximada entre centros urbanos conhecidos, não entre endereços. Sem Google Maps; regiões sem coordenadas são mantidas no resultado com distância não calculada.</p>
   </section>
   <div class="panel-grid two">
-    <section class="panel-card"><div class="card-head"><div><h2>Empresas demonstrativas encontradas</h2><p class="panel-card-subtitle">Registros fictícios para testar localização. Não são empresas confirmadas no radar.</p></div></div>
+    <section class="panel-card"><div class="card-head"><div><h2>Empresas no catálogo demonstrativo</h2><p class="panel-card-subtitle">São entidades fictícias para teste. Não as apresentamos como contratantes sem anúncio confirmado.</p></div></div>
       <div class="job-list">${sortedCompanies.map(({ company, distance }) => `<article class="company-found-card"><span class="company-found-icon">${ICONS.company}</span><div><h3>${escapeHtml(company.name)}</h3><p>${escapeHtml(company.sector || "Setor não informado")} · ${escapeHtml(locationText(company))}</p><p>${escapeHtml(company.address || "Localização demonstrativa")}</p><p>${distance === null ? "Distância não calculada sem dados demonstrativos para a cidade." : `≈ ${distance} km entre centros urbanos (estimativa demonstrativa, não endereço real).`}</p><p><strong>Vagas confirmadas: nenhuma.</strong> ${company.id === "company-demo" ? `${publishedJobs.filter((job) => job.companyId === company.id).length} anúncio(s) demonstrativo(s) no catálogo.` : "Não há anúncio associado a este registro."}</p></div><span class="demo-tag">Fictícia</span></article>`).join("") || emptyState("Nenhum registro encontrado", "Não há empresas demonstrativas neste catálogo.", "company")}</div>
     </section>
-    <section class="panel-card"><div class="card-head"><div><h2>Oportunidades compatíveis</h2><p class="panel-card-subtitle">${visibleJobs.length} anúncio(s) demonstrativo(s) dentro do filtro regional atual.</p></div></div>
-      <div class="job-list">${visibleJobs.length ? visibleJobs.map((job) => jobCard(job, { showScore: true, showDescription: false })).join("") : emptyState("Nenhum anúncio nesta distância", "Tente ampliar o raio ou atualizar cidade, área e tipos de vaga no perfil.")}</div>
+    <section class="panel-card"><div class="card-head"><div><h2>Oportunidades compatíveis</h2><p class="panel-card-subtitle">${visibleJobs.length} anúncio(s) demonstrativo(s) correspondem aos filtros. Nenhum deles é uma vaga real confirmada.</p></div></div>
+      <div class="job-list">${visibleJobs.length ? visibleJobs.map((job) => jobCard(job, { showScore: true, showDescription: false })).join("") : emptyState("Nenhum anúncio neste filtro", "Altere cidade, raio, modalidade ou preferências para explorar outros exemplos.")}</div>
     </section>
   </div>
-  <p class="form-help" style="margin-top:.9rem">Compatibilidade percentual = regra demonstrativa baseada em campos do perfil. Não prevê contratação nem representa avaliação automatizada real.</p>`;
+  <section class="panel-card radar-map-note"><div class="map-note-icon">⌖</div><div><h3>Visualização em mapa</h3><p>Mapa indisponível nesta versão: Google Maps/serviço equivalente ainda não foi conectado. A lista acima usa apenas coordenadas demonstrativas de centros urbanos.</p></div><span class="demo-tag">Integração pendente</span></section>
+  <p class="form-help" style="margin-top:.9rem">Compatibilidade percentual = regra demonstrativa baseada em campos do perfil. Não prevê contratação nem representa inteligência artificial.</p>`;
 }
 
 function renderJobsPage() {
@@ -658,7 +696,9 @@ function openJobDetails(jobId) {
   const benefits = (job.benefits || []).map((item) => `<li>${escapeHtml(item)}</li>`).join("");
   const url = safeHttpUrl(job.applicationUrl);
   const score = session.role === "candidate" ? jobScore(job, currentUser) : null;
-  const body = `<div class="app-modal-section"><span class="demo-tag">Vaga demonstrativa · contratação não confirmada</span><p style="margin-top:.6rem"><strong>Empresa:</strong> ${escapeHtml(company?.name || "Empresa demonstrativa")}</p><p><strong>Local:</strong> ${escapeHtml(job.address || locationText(job))}</p><p><strong>Distância:</strong> ${session.role === "candidate" ? escapeHtml(distanceLabel(currentUser, job)) : "Não calculada neste painel."}</p><p><strong>Tipo / modalidade:</strong> ${escapeHtml(job.type)} · ${escapeHtml(job.modality)}</p><p><strong>Escolaridade:</strong> ${escapeHtml(job.education || "Não informada")}</p>${score !== null ? `<p><strong>Compatibilidade estimada:</strong> ${score}% (regra local demonstrativa, não IA).</p>` : ""}</div><div class="app-modal-section"><h3>Descrição</h3><p>${escapeHtml(job.description)}</p></div><div class="app-modal-section"><h3>Requisitos</h3>${requirements ? `<ul>${requirements}</ul>` : `<p>Não informados.</p>`}</div><div class="app-modal-section"><h3>Benefícios</h3>${benefits ? `<ul>${benefits}</ul>` : `<p>Não informados.</p>`}</div>${url ? `<div class="app-modal-section"><h3>Canal externo</h3><p><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Acessar link informado pela empresa</a></p></div>` : ""}<p class="form-help" style="margin-top:1rem">Este anúncio existe apenas no protótipo local. Registrar interesse não envia candidatura a uma empresa real.</p>`;
+  const explanation = session.role === "candidate" ? explainJobMatch(job, currentUser) : null;
+  const matchDetails = explanation ? `<div class="app-modal-section"><h3>Por que esta oportunidade combina?</h3><p><strong>${score}% de compatibilidade estimada</strong> — cálculo explicável por regras locais, não IA nem promessa de contratação.</p><ul>${explanation.reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}</ul><p><strong>Requisitos atendidos:</strong> ${explanation.matched.length ? explanation.matched.map(escapeHtml).join(", ") : "nenhum dos requisitos listados consta no perfil ainda"}.</p><p><strong>A desenvolver:</strong> ${explanation.missing.length ? explanation.missing.map(escapeHtml).join(", ") : "nenhum requisito listado pendente"}.</p><p><strong>Próximo passo:</strong> ${escapeHtml(explanation.improvement)}</p></div>` : "";
+  const body = `<div class="app-modal-section"><span class="demo-tag">Vaga demonstrativa · contratação não confirmada</span><p style="margin-top:.6rem"><strong>Empresa:</strong> ${escapeHtml(company?.name || "Empresa demonstrativa")}</p><p><strong>Local:</strong> ${escapeHtml(job.address || locationText(job))}</p><p><strong>Distância:</strong> ${session.role === "candidate" ? escapeHtml(distanceLabel(currentUser, job)) : "Não calculada neste painel."}</p><p><strong>Tipo / modalidade:</strong> ${escapeHtml(job.type)} · ${escapeHtml(job.modality)}</p><p><strong>Escolaridade:</strong> ${escapeHtml(job.education || "Não informada")}</p></div>${matchDetails}<div class="app-modal-section"><h3>Descrição</h3><p>${escapeHtml(job.description)}</p></div><div class="app-modal-section"><h3>Requisitos</h3>${requirements ? `<ul>${requirements}</ul>` : `<p>Não informados.</p>`}</div><div class="app-modal-section"><h3>Benefícios</h3>${benefits ? `<ul>${benefits}</ul>` : `<p>Não informados.</p>`}</div>${url ? `<div class="app-modal-section"><h3>Canal externo</h3><p><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Acessar link informado pela empresa</a></p></div>` : ""}<p class="form-help" style="margin-top:1rem">Este anúncio existe apenas no protótipo local. Registrar interesse não envia candidatura a uma empresa real.</p>`;
   const actions = session.role === "candidate" && !hasApplied(job.id) && job.approved && job.active !== false
     ? `<button type="button" class="btn btn-ghost" data-action="close-modal">Fechar</button><button type="button" class="btn btn-primary" data-action="apply-job" data-id="${escapeHtml(job.id)}">Registrar interesse</button>`
     : `<button type="button" class="btn btn-primary" data-action="close-modal">Fechar</button>`;
@@ -1074,9 +1114,10 @@ appContent.addEventListener("input", (event) => {
 });
 appContent.addEventListener("change", (event) => {
   if (["jobArea", "jobType", "jobModality"].includes(event.target.id)) renderFilteredJobs();
-  if (event.target.id === "radarRadius") {
+  if (["radarRadius", "radarCity", "radarState", "radarNeighborhood", "radarType", "radarArea", "radarModality"].includes(event.target.id)) {
     const settings = PlatformService.getCandidateSettings(currentUser.id);
-    PlatformService.saveCandidateSettings(currentUser.id, { ...settings, distanceMaxKm: event.target.value });
+    const keyById = { radarRadius: "distanceMaxKm", radarCity: "radarCity", radarState: "radarState", radarNeighborhood: "radarNeighborhood", radarType: "radarType", radarArea: "radarArea", radarModality: "radarModality" };
+    PlatformService.saveCandidateSettings(currentUser.id, { ...settings, [keyById[event.target.id]]: event.target.value });
     renderPage();
   }
   if (event.target.matches("[data-application-status]")) {
@@ -1103,11 +1144,11 @@ appModalContent.addEventListener("submit", (event) => {
 $("#notificationShortcut").addEventListener("click", () => setView("notifications"));
 $("#logoutButtonTop").addEventListener("click", () => askConfirmation("Sair da conta?", "A sessão demonstrativa será encerrada e você voltará à tela de acesso.", "Sim, sair", () => {
   AuthService.logout();
-  window.location.replace("index.html");
+  window.location.replace("login.html");
 }));
 $("#logoutButtonSide").addEventListener("click", () => askConfirmation("Sair e trocar de acesso?", "A sessão será encerrada para que você possa entrar com outra conta demonstrativa.", "Sair", () => {
   AuthService.logout();
-  window.location.replace("index.html");
+  window.location.replace("login.html");
 }));
 menuToggle.addEventListener("click", () => appSidebar.classList.contains("open") ? closeMobileMenu() : openMobileMenu());
 sidebarScrim.addEventListener("click", closeMobileMenu);
@@ -1127,12 +1168,12 @@ async function bootstrap() {
     currentUser = await UserService.getById(session.userId, session.token);
     if (!currentUser || currentUser.status === "blocked") {
       AuthService.logout();
-      window.location.replace("index.html?redirect=painel");
+      window.location.replace("login.html?redirect=painel");
       return;
     }
     if (session.role !== currentUser.role) {
       AuthService.logout();
-      window.location.replace("index.html?redirect=painel");
+      window.location.replace("login.html?redirect=painel");
       return;
     }
     PlatformService.init();
@@ -1141,7 +1182,7 @@ async function bootstrap() {
       if (!currentCompany) {
         showToast("O perfil empresarial desta conta não foi encontrado.", "error");
         AuthService.logout();
-        window.location.replace("index.html");
+        window.location.replace("login.html");
         return;
       }
       session.companyId = currentCompany.id;

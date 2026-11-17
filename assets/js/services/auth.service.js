@@ -2,6 +2,7 @@ import { APP_CONFIG, DEMO_CREDENTIALS } from "../config/app.config.js";
 import { StorageService } from "./storage.service.js";
 import ApiService from "./api.service.js";
 import { UserService } from "./user.service.js";
+import { PlatformService } from "./platform.service.js";
 
 const { users: USERS_KEY, session: SESSION_KEY, seeded: SEEDED_KEY, passwordReset: RESET_KEY } = APP_CONFIG.storageKeys;
 const PBKDF2_ITERATIONS = 180_000;
@@ -221,6 +222,42 @@ export const AuthService = {
     return UserService.toPublicUser(novoUsuario);
   },
 
+  async registerCompany(dados) {
+    const email = String(dados.email ?? "").trim().toLowerCase();
+    if (this.emailJaCadastrado(email)) throw new Error("Este e-mail já está cadastrado. Tente fazer login.");
+    const companyId = makeId("company");
+    const user = UserService.normalizeUser({
+      id: makeId(),
+      nome: String(dados.nome ?? "").trim(),
+      email,
+      role: "company",
+      status: "active",
+      companyId,
+      senhaHash: await hashPassword(dados.senha),
+      criadoEm: new Date().toISOString(),
+      termosAceitosEm: new Date().toISOString(),
+    });
+    const users = allUsers();
+    users.push(user);
+    saveUsers(users);
+    try {
+      PlatformService.createCompany(companyId, user.id, {
+        name: dados.companyName,
+        sector: dados.sector,
+        description: dados.description,
+        city: dados.city,
+        state: dados.state,
+        website: dados.website,
+        contactEmail: email,
+      });
+    } catch (error) {
+      saveUsers(allUsers().filter((entry) => entry.id !== user.id));
+      throw error;
+    }
+    this._createSession(user, true);
+    return UserService.toPublicUser(user);
+  },
+
   async login(email, senha, lembrarMe = false, expectedRole = "candidate") {
     if (APP_CONFIG.useApi) {
       const { usuario, token } = await ApiService.post("/auth/login", { email, senha, role: expectedRole });
@@ -313,7 +350,7 @@ export const AuthService = {
     const session = this.getSession();
     if (!session) {
       const path = window.location.pathname.split("/").pop() || "painel";
-      window.location.replace(`index.html?redirect=${encodeURIComponent(path.replace(/\.html$/, ""))}`);
+      window.location.replace(`login.html?redirect=${encodeURIComponent(path.replace(/\.html$/, ""))}`);
       return null;
     }
     if (allowedRoles) {

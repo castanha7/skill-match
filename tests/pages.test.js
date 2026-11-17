@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import test from "node:test";
 import { JSDOM } from "jsdom";
 
-const pages = ["index.html", "cadastro.html", "painel.html", "perfil.html", "termos.html", "privacidade.html"];
+const pages = ["index.html", "login.html", "cadastro.html", "cadastro-empresa.html", "painel.html", "perfil.html", "termos.html", "privacidade.html"];
 const root = process.cwd();
 const isExternalOrSpecial = (value) => /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(value);
 

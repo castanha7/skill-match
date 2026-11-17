@@ -1,146 +1,80 @@
-# Integração futura — Node.js, Express e MySQL
+# SkillMatch: backend, busca de vagas e integrações
 
-## Situação atual
+## Estado desta implementação
 
-O repositório contém somente frontend estático. `APP_CONFIG.useApi` é `false`, `apiBaseUrl` está vazio e os serviços de demonstração escrevem em `localStorage`/`sessionStorage`. Não existe servidor, tabela MySQL, Google Maps, API de IA, serviço de e-mail ou provedor de vagas conectado.
+O projeto preserva o frontend e os serviços demonstrativos preexistentes. Foi acrescentado `backend/`, uma API Express/MySQL separada. O backend não foi inicializado contra um banco real nesta sessão, porque não há serviço/credenciais MySQL nem provedor externo configurados. Os testes do frontend não são testes de integração da API.
 
-O cliente em `assets/js/services/api.service.js` é um ponto inicial para chamadas HTTP, mas **não é uma API pronta**: cada operação de empresa, vaga, candidatura, anúncio, notificação e administração precisará de contrato e implementação no backend. Não basta alternar uma flag.
+O cliente de rede público lê a meta tag `skillmatch-api-base` somente na página inicial e tenta `GET /api/jobs` quando ela contém uma URL. As operações autenticadas nas telas continuam usando demonstração local; apenas apontar a meta tag **não migra** cadastro/login, perfil, candidaturas, empresa ou administração para o banco.
 
-## Arquitetura sugerida
+## Rotas já implementadas
 
-```text
-server/
-├── src/
-│   ├── app.js
-│   ├── server.js
-│   ├── config/database.js
-│   ├── routes/ (auth, candidates, companies, jobs, applications, admin)
-│   ├── controllers/
-│   ├── services/ (matching, notifications, moderation, maps)
-│   ├── repositories/ (queries parametrizadas)
-│   ├── middlewares/ (session, authorization, validation, rate limiting)
-│   └── utils/
-├── migrations/
-└── .env.example
-```
-
-Dependências podem incluir `express`, `mysql2`, `dotenv`, `helmet`, `cors`, `express-validator`, `bcrypt` ou Argon2, biblioteca de sessões/JWT e testes de integração. Segredos ficam em um cofre/variáveis do servidor, nunca no HTML, JavaScript servido ao navegador ou repositório.
-
-## Endpoints sugeridos
-
-| Método | Endpoint | Acesso | Uso |
+| Método | Rota | Acesso | Comportamento |
 |---|---|---|---|
-| `POST` | `/api/auth/register` | Público | Criar candidato; validar e-mail, consentimento e senha no servidor |
-| `POST` | `/api/auth/login` | Público | Autenticar e criar sessão segura |
-| `POST` | `/api/auth/password/forgot` | Público, limitado | Iniciar recuperação por e-mail verificado, sem revelar se a conta existe |
-| `POST` | `/api/auth/password/reset` | Público, token de uso único | Concluir recuperação |
-| `POST` | `/api/auth/logout` | Autenticado | Encerrar sessão no servidor |
-| `GET/PUT/DELETE` | `/api/candidates/me` | Candidato dono | Consultar, alterar e remover perfil |
-| `GET/PUT` | `/api/companies/me` | Empresa dona | Consultar e editar dados empresariais |
-| `GET` | `/api/jobs` | Público/autenticado | Lista aprovada, filtros e paginação |
-| `GET/POST` | `/api/companies/me/jobs` | Empresa dona | Listar e publicar vaga |
-| `GET/PUT/DELETE` | `/api/jobs/:id` | Dono ou admin | Detalhes, edição, pausa e remoção |
-| `POST` | `/api/jobs/:id/applications` | Candidato | Candidatar-se a uma vaga publicada e elegível |
-| `GET` | `/api/candidates/me/applications` | Candidato dono | Acompanhar candidaturas próprias |
-| `GET/PATCH` | `/api/companies/me/applications` | Empresa dona | Consultar inscritos na vaga da empresa e mudar status |
-| `GET/PATCH` | `/api/candidates/me/notifications` | Candidato dono | Consultar e marcar notificações |
-| `GET/PATCH` | `/api/admin/candidates` | Admin | Gerenciar contas com trilha de auditoria |
-| `GET/PATCH` | `/api/admin/companies` | Admin | Revisar/verificar cadastros empresariais |
-| `GET/PATCH/DELETE` | `/api/admin/jobs` | Admin | Revisar, aprovar, editar ou remover anúncios |
-| `GET/POST/PATCH/DELETE` | `/api/admin/announcements` | Admin | Gerenciar comunicados/anúncios |
-| `GET/PATCH` | `/api/admin/reports` | Admin | Revisar denúncias e problemas |
-| `GET` | `/api/recommendations` | Candidato autenticado | Retornar critérios e oportunidades obtidas de fonte real |
+| `GET` | `/api/health` | Público | Verifica conectividade com MySQL sem revelar detalhes internos |
+| `POST` | `/api/auth/register` | Público, limitado | Cadastro candidato/empresa, validação Zod e hash bcrypt |
+| `POST` | `/api/auth/login` | Público, limitado | Verificação bcrypt, estado da conta e JWT HS256 |
+| `GET` | `/api/auth/me` | JWT válido | Retorna identidade pública |
+| `GET` | `/api/jobs` | Público | Anúncios ativos `confirmed`/`unverified`; preserva status e fonte |
+| `POST` | `/api/jobs/discovery/search` | Candidato autenticado | Executa busca apenas pelo provedor configurado e persiste os resultados |
+| `POST` | `/api/jobs/:jobId/applications` | Candidato autenticado | Registra interesse uma única vez e somente para anúncio ativo |
+| `GET` | `/api/jobs/applications/mine` | Candidato autenticado | Lista as candidaturas do próprio usuário |
 
-Todas as respostas precisam filtrar campos por papel, aplicar paginação e validar entradas no servidor. A interface nunca deve decidir autorização apenas por esconder uma aba.
+A API inicial ainda não implementa gestão empresarial completa de anúncios e candidaturas, operações administrativas, autenticação por cookie, verificação de e-mail, reset por e-mail, rotas completas de perfil/currículo, notificações, Google Maps, IA, auditoria ou processo de denúncias. As ações equivalentes existentes no painel frontend continuam locais e demonstrativas.
 
-## Modelo de dados inicial (rascunho)
+## Inicialização e configuração
 
-```sql
-CREATE TABLE users (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  email VARCHAR(254) NOT NULL UNIQUE,
-  password_hash VARCHAR(255) NOT NULL,
-  role ENUM('candidate','company','admin') NOT NULL,
-  status ENUM('active','blocked','pending') NOT NULL DEFAULT 'active',
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-
-CREATE TABLE candidates (
-  user_id BIGINT PRIMARY KEY,
-  name VARCHAR(120) NOT NULL,
-  phone VARCHAR(20),
-  birth_date DATE,
-  city VARCHAR(100), state CHAR(2),
-  education VARCHAR(100), current_course VARCHAR(160), institution VARCHAR(160),
-  summary TEXT, photo_path VARCHAR(500), visibility ENUM('private','applied_only','public') DEFAULT 'applied_only',
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE companies (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  user_id BIGINT NOT NULL UNIQUE,
-  name VARCHAR(180) NOT NULL,
-  sector VARCHAR(100), description TEXT,
-  city VARCHAR(100), state CHAR(2), address VARCHAR(255), website VARCHAR(500),
-  review_status ENUM('pending','verified','rejected','suspended') NOT NULL DEFAULT 'pending',
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-
-CREATE TABLE jobs (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  company_id BIGINT NOT NULL,
-  title VARCHAR(160) NOT NULL,
-  description TEXT NOT NULL,
-  requirements JSON,
-  education VARCHAR(160), benefits JSON,
-  area VARCHAR(100), employment_type VARCHAR(60), modality VARCHAR(40),
-  city VARCHAR(100), state CHAR(2), address VARCHAR(255), application_url VARCHAR(1000),
-  moderation_status ENUM('pending','approved','rejected','suspended') NOT NULL DEFAULT 'pending',
-  source VARCHAR(100), source_reference VARCHAR(255), confirmed_at TIMESTAMP NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (company_id) REFERENCES companies(id)
-);
-
-CREATE TABLE applications (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  job_id BIGINT NOT NULL,
-  candidate_id BIGINT NOT NULL,
-  status VARCHAR(40) NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY one_application_per_candidate_job (job_id, candidate_id),
-  FOREIGN KEY (job_id) REFERENCES jobs(id),
-  FOREIGN KEY (candidate_id) REFERENCES candidates(user_id)
-);
+```bash
+cd backend
+cp .env.example .env
+# Defina JWT_SECRET (mínimo 32 caracteres aleatórios), credenciais SQL e FRONTEND_ORIGIN.
+npm ci
+mysql -u root -p < sql/schema.sql
+npm start
 ```
 
-Normalize habilidades, cursos, experiências, tipos de vaga e histórico de status em tabelas próprias se houver pesquisa, auditoria ou filtros. Não guarde currículo/foto como data URL em tabelas: use armazenamento de arquivos apropriado e política de acesso/remoção.
+Use Node.js 20+, MySQL 8+, HTTPS em produção, um usuário SQL restrito e cofre/variáveis do host para segredos. Não publique `.env`. Configure `FRONTEND_ORIGIN` para a origem exata do GitHub Pages/domínio (a lista pode conter origens separadas por vírgula). GitHub Pages não executa Express, MySQL, chaves ou tarefas agendadas.
 
-## Segurança, privacidade e confiabilidade
+## Provedor autorizado de pesquisa
 
-- Produção precisa de autenticação e autorização no servidor em cada rota; a conta admin de demonstração jamais deve migrar.
-- Armazene senhas com Argon2id ou bcrypt com configuração atualizada e salt único. Nunca registre a senha nos logs.
-- Prefira sessão com cookie `HttpOnly`, `Secure`, `SameSite` e proteção CSRF a token acessível em JavaScript. Planeje rotação, expiração e logout.
-- Use HTTPS, CORS restrito, CSP, `helmet`, limites de requisição, rate limit, validação e queries parametrizadas.
-- A recuperação deve usar token aleatório de curta duração e uso único enviado pelo serviço de e-mail; nunca exiba um código de reset no cliente.
-- A área admin exige MFA/controle de acesso, auditoria imutável, aprovação de conteúdo e revisão operacional.
-- Defina minimização, finalidade, retenção e exclusão de dados pessoais, controles de visibilidade do currículo e canal para solicitações de titulares; obtenha revisão de privacidade/jurídica antes do lançamento.
-- Uma vaga só pode ser apresentada como confirmada se a origem e o estado forem verificados. Distinga sempre vaga demonstrativa, publicada por empresa, aprovada e confirmada por fonte real.
+Configure `SEARCH_PROVIDER_URL` e `SEARCH_PROVIDER_TOKEN` **somente no servidor**. O serviço configurado deve aceitar `POST` com Bearer token e JSON semelhante a:
 
-## Google Maps e distância
+```json
+{
+  "location": { "city": "Araucária", "state": "PR", "radiusKm": 10 },
+  "query": ["administração"],
+  "categories": ["primeiro emprego", "jovem aprendiz", "estágio", "sem experiência"]
+}
+```
 
-A distância atual do protótipo usa alguns pares de coordenadas estáticos de centros urbanos e é apenas ilustrativa. Uma integração real deve geocodificar locais com consentimento e termos apropriados, usar cache e cota, distinguir distância em linha reta de rota e não expor chaves restritas ao backend no cliente. O app deve continuar funcional quando a API falhar ou o local não estiver disponível.
+E retornar `{ "results": [...] }` com objetos estruturados contendo `companyName`, `title`, `description`, `city`, `state`, `requirements`, `education`, `employmentType`, `modality`, `sourceName`, `sourceUrl`, `publishedAt`, `availability`, `verifiedAt`, `expiresAt` e `externalId` (campos opcionais ausentes não são inventados). `sourceUrl` HTTP/HTTPS original é obrigatório para persistir; URLs inseguras são descartadas. `expiresAt` é opcional e, quando ausente, o registro recebe janela de exibição de 14 dias renovada apenas se for reencontrado numa sincronização. O provedor deve ter autorização/termos adequados para consultar suas fontes.
 
-## Recomendações/IA
+A integração **não** acessa resultados HTML do Google nem ignora robots, limites ou termos de uso. Se o serviço não estiver configurado, a rota responde `503`. O backend marca `confirmed` somente quando a fonte contratada devolve `availability: "active"` e `verifiedAt` junto a um link válido; sem isso mantém `unverified`. `availability: "closed"` é armazenado como `possibly_closed` e não aparece no catálogo público. O sistema preserva fonte, URL e data de verificação retornada pelo fornecedor. Essa verificação é tão confiável quanto o processo do provedor; produção deve auditar amostras e tratar links quebrados.
 
-A compatibilidade atual é uma heurística local e visível. Uma versão real precisa de critérios explicáveis, tratamento de dados apropriado, testes de viés, limites de uso, possibilidade de contestação e fallback sem IA. Não use o percentual como probabilidade de contratação.
+`DISCOVERY_CITIES` aceita uma lista como `Curitiba:PR,Araucaria:PR`. `DISCOVERY_CRON` permite agendar sincronização (padrão `0 7 * * *`, horário `America/Sao_Paulo`). O agendador só inicia quando cidades e provedor autorizado estão configurados. A deduplicação usa hash de nome da empresa, cargo e localidade. Ajuste a regra conforme fontes e anúncios reais, pois diferenças de grafia podem exigir normalização/registro de identificador externo.
 
-## Implantação
+## Conectar o catálogo estático
 
-1. Implementar e testar a API separadamente.
-2. Criar configuração de ambiente de frontend somente com URL pública da API; nenhuma chave secreta.
-3. Substituir gradualmente os métodos locais dos serviços por endpoints, incluindo os fluxos de empresa/admin e tratamento de erros.
-4. Configurar CORS e cookies para o domínio hospedado.
-5. Migrar os dados de demonstração apenas quando houver consentimento e política definida; nunca copie senhas demo.
-6. Testar controle de acesso, privacidade, filtros, concorrência, remoção e falhas externas antes de produção.
+Edite no `index.html`:
+
+```html
+<meta name="skillmatch-api-base" content="https://api.exemplo.com">
+```
+
+O frontend faz `GET /api/jobs`. O backend deve responder `{"jobs": [...]}`. CORS precisa permitir a origem do frontend. A página exibe apenas os dados recebidos e status enviados pelo backend; falha de rede mostra aviso e os dados de demonstração locais. Esta configuração **não liga autenticação, candidatura, painel, Radar ou dados de perfil** à API.
+
+Para completar essa migração, criar um serviço de sessão HTTPOnly/CSRF, adaptar `AuthService`, `UserService` e `PlatformService`, substituir cada operação local por endpoints, definir tratamento offline e testes de contrato, e impedir que dados locais de demonstração se confundam com contas reais. Não copie as credenciais públicas de demonstração para o banco.
+
+## Segurança e implantação ainda necessárias
+
+- Configure sessão por cookie `HttpOnly`, `Secure`, `SameSite` e proteção CSRF, ou trate o JWT atual apenas como scaffold (o token em armazenamento acessível ao JS é vulnerável a XSS).
+- Provisionamento de `admin` deve ser manual/controlado; o endpoint de registro público não permite administrador. Adicione MFA, política de menor privilégio e trilha de auditoria antes de painel operacional.
+- Implementar validação/verificação de empresas, revisão humana, denúncias e decisões de publicação.
+- Implementar propriedade do recurso para todas as rotas futuras, paginação, limites, proteção de arquivos/currículos e política de retenção/exclusão.
+- Configurar serviço de busca autorizado, teste de disponibilidade, observabilidade e limite de custo. A chave nunca vai ao frontend.
+- Google Maps/alternativa: geocodificação e distância/rota devem ser solicitadas pelo backend, com chaves restritas, consentimento, cache e cota. A distância atual do painel é uma estimativa em linha reta entre alguns centros urbanos hardcoded.
+- IA: não conectada. Um serviço futuro deve explicar sinais e lacunas, evitar inferir atributos sensíveis, permitir revisão e nunca apresentar percentual como chance de contratação. A compatibilidade do protótipo é regra determinística local.
+- Criar testes de integração com MySQL/API simulada e testes de autorização (candidato não lê outro currículo, empresa não altera vaga alheia, admin isolado) antes da publicação.
+
+## Modelo de dados
+
+`backend/sql/schema.sql` cria `users`, `candidate_profiles`, `companies`, `jobs` e `applications` com relações, status, unicidade de candidatura e chave de deduplicação. As migrações para produção devem ser versionadas, testadas e aplicadas com backup. Dados reais de candidatos exigem controles de privacidade, acesso restrito e política LGPD revisada.

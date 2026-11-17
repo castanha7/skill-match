@@ -41,6 +41,7 @@ if (AuthService.isAuthenticated()) window.location.replace("painel.html");
 [emailInput, senhaInput, resetEmailInput, resetCodeInput, resetPasswordInput, resetConfirmInput].forEach(bindAutoClear);
 
 const params = new URLSearchParams(window.location.search);
+if (["candidate", "company", "admin"].includes(params.get("role"))) roleInput.value = params.get("role");
 if (params.get("cadastrado")) {
   showAlert(alertSuccess, "#loginSuccessText", "Conta criada. Entre para continuar no SkillMatch.");
 }
