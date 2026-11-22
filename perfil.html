@@ -25,9 +25,10 @@
         <span class="logo-name">Skill<em>Match</em></span>
       </a>
       <nav aria-label="Navegação principal">
+        <a href="painel.html" class="keep">Painel</a>
+        <a href="painel.html?view=jobs">Vagas</a>
+        <a href="painel.html?view=radar">Radar</a>
         <a href="perfil.html" class="keep" aria-current="page">Meu perfil</a>
-        <a href="#" class="soon" data-soon>Vagas <span class="badge-soon">em breve</span></a>
-        <a href="#" class="soon" data-soon>Meus matches <span class="badge-soon">em breve</span></a>
         <button class="btn btn-ghost btn-sm keep" id="logoutButtonTop" style="margin-left:.4rem">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg>
           Sair
@@ -42,6 +43,12 @@
     <aside class="profile-side">
       <div class="card identity-card reveal">
         <div class="avatar" id="avatarInitials">--</div>
+        <div class="avatar-actions">
+          <label class="btn btn-ghost btn-sm" for="profilePhotoInput">Adicionar / trocar foto</label>
+          <input type="file" id="profilePhotoInput" accept="image/png,image/jpeg,image/webp" hidden />
+          <button type="button" class="btn btn-ghost btn-sm" id="removePhotoButton" hidden>Remover foto</button>
+        </div>
+        <p class="photo-note">Foto demonstrativa salva somente neste navegador.</p>
         <h2 id="displayName">Carregando...</h2>
         <p class="headline" id="displayHeadline"></p>
         <p class="location" id="displayLocation"></p>
@@ -75,6 +82,7 @@
         <a href="#dados-pessoais"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg> Dados pessoais</a>
         <a href="#sobre"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h9"/></svg> Sobre mim</a>
         <a href="#habilidades"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.4L12 15l-1.9-4.6L5.5 9l4.6-1.4L12 3z"/></svg> Habilidades</a>
+        <a href="#cursos-experiencias"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg> Cursos e experiências</a>
         <a href="#preferencias"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg> Preferências de vaga</a>
         <button type="button" id="logoutButtonSide">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg>
@@ -258,6 +266,28 @@
             <button type="button" class="btn btn-ghost" data-cancel="habilidades">Cancelar</button>
             <button type="submit" class="btn btn-primary">Salvar alterações</button>
           </div>
+        </form>
+      </section>
+
+      <!-- Cursos complementares e experiências -->
+      <section class="card section-card reveal reveal-3" id="cursos-experiencias">
+        <div class="section-head">
+          <span class="section-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span>
+          <div><h3>Cursos e experiências</h3><p>Inclua cursos complementares, projetos escolares, voluntariado ou trabalhos informais.</p></div>
+          <button type="button" class="btn btn-ghost btn-sm view-mode" data-edit="cursos-experiencias">Editar</button>
+        </div>
+        <div class="view-mode">
+          <div class="info-grid">
+            <div class="info-item"><small>Cursos complementares</small><div class="list-view" data-view="cursos"></div></div>
+            <div class="info-item"><small>Experiências e projetos</small><div class="list-view" data-view="experiencias"></div></div>
+          </div>
+        </div>
+        <form class="edit-form" data-form="cursos-experiencias" novalidate>
+          <div class="form-row">
+            <div class="field"><label for="edit-cursos">Cursos complementares <span class="optional">(um por linha)</span></label><textarea class="input" id="edit-cursos" data-field="cursos" rows="5" placeholder="Ex.: Fundamentos de Excel — Escola / plataforma"></textarea><p class="hint">Informe apenas cursos realizados ou em andamento. Não adicione certificados que você não possui.</p></div>
+            <div class="field"><label for="edit-experiencias">Experiências, projetos ou voluntariado <span class="optional">(um por linha)</span></label><textarea class="input" id="edit-experiencias" data-field="experiencias" rows="5" placeholder="Ex.: Projeto escolar de site responsivo — criação de páginas com HTML e CSS"></textarea><p class="hint">Experiência profissional não é obrigatória para começar.</p></div>
+          </div>
+          <div class="edit-actions"><button type="button" class="btn btn-ghost" data-cancel="cursos-experiencias">Cancelar</button><button type="submit" class="btn btn-primary">Salvar alterações</button></div>
         </form>
       </section>
 

@@ -1,28 +1,22 @@
 import { APP_CONFIG } from "../config/app.config.js";
 
-/**
- * ApiService — Cliente HTTP da futura API REST (Node.js + Express)
- * ------------------------------------------------------------
- * Já está pronto para uso: quando `APP_CONFIG.useApi` for `true`,
- * os serviços passam a chamar estes métodos, que fazem `fetch`
- * para os endpoints definidos em docs/INTEGRACAO-BACKEND.md.
- * Nesta etapa (somente frontend) ele não é utilizado.
- */
+/** Cliente HTTP reservado para a integração futura com a API Node/Express. */
 const ApiService = {
   async request(endpoint, { method = "GET", body, token } = {}) {
-    const response = await fetch(`${APP_CONFIG.apiBaseUrl}${endpoint}`, {
+    if (!APP_CONFIG.apiBaseUrl) {
+      throw new Error("A API do SkillMatch ainda não foi configurada. Este projeto está em modo demonstrativo local.");
+    }
+    const url = new URL(endpoint.replace(/^\//, ""), `${APP_CONFIG.apiBaseUrl.replace(/\/$/, "")}/`);
+    const response = await fetch(url, {
       method,
       headers: {
-        "Content-Type": "application/json",
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      body: body ? JSON.stringify(body) : undefined,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
     });
-
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(data.message || `Erro ${response.status} ao comunicar com o servidor.`);
-    }
+    if (!response.ok) throw new Error(data.message || `Erro ${response.status} ao comunicar com o servidor.`);
     return data;
   },
 

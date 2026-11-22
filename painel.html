@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Painel demonstrativo do SkillMatch para candidatos, empresas e administração." />
+  <title>Painel — SkillMatch</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232563eb'/%3E%3Ccircle cx='22' cy='24' r='7' fill='none' stroke='white' stroke-width='5'/%3E%3Ccircle cx='42' cy='40' r='7' fill='none' stroke='%237dd3fc' stroke-width='5'/%3E%3Cpath d='M27 29l10 6' stroke='white' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/base.css" />
+  <link rel="stylesheet" href="assets/css/dashboard.css" />
+</head>
+<body class="dashboard-body">
+  <header class="app-topbar">
+    <div class="app-topbar-inner">
+      <div class="app-brand-group">
+        <button type="button" class="menu-toggle" id="menuToggle" aria-label="Abrir menu" aria-expanded="false" aria-controls="appSidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <a class="logo" href="painel.html" aria-label="SkillMatch — início">
+          <span class="logo-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="7" r="3"/><circle cx="17.5" cy="17" r="3"/><circle cx="17.5" cy="7" r="2.2"/><path d="M9 9.5l5.5 5M8.8 5.2l6-1.4M6.5 10v6.5"/></svg></span>
+          <span class="logo-name">Skill<em>Match</em></span>
+        </a>
+      </div>
+      <div class="app-topbar-actions">
+        <span class="demo-top-label"><span class="demo-dot"></span> Demonstração local</span>
+        <button type="button" class="icon-button notification-shortcut" id="notificationShortcut" data-view="notifications" aria-label="Abrir notificações">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
+          <span class="notification-count" id="notificationCount" hidden>0</span>
+        </button>
+        <button type="button" class="btn btn-ghost btn-sm top-logout" id="logoutButtonTop">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/></svg>
+          Sair
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="app-shell">
+    <div class="sidebar-scrim" id="sidebarScrim" aria-hidden="true"></div>
+    <aside class="app-sidebar" id="appSidebar" aria-label="Navegação principal">
+      <div class="sidebar-user" id="sidebarUser">
+        <div class="sidebar-avatar" id="sidebarAvatar">SM</div>
+        <div class="sidebar-user-copy"><strong id="sidebarName">Carregando...</strong><small id="sidebarRole">SkillMatch</small></div>
+      </div>
+      <nav class="app-nav" id="appNav" aria-label="Seções do painel"></nav>
+      <div class="sidebar-bottom">
+        <div class="sidebar-disclaimer"><strong>Modo de demonstração</strong><span>Dados locais e fictícios. Sem API, mapas ou processos seletivos reais.</span></div>
+        <button type="button" class="sidebar-login-link" id="logoutButtonSide">Sair e trocar de acesso</button>
+      </div>
+    </aside>
+
+    <main class="app-main" id="appMain">
+      <div class="demo-banner" role="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.01"/></svg>
+        <span><strong>Ambiente demonstrativo:</strong> vagas, empresas, compatibilidade e candidaturas são exemplos locais — não representam contratação real.</span>
+      </div>
+      <div id="pageHeader" class="page-header"></div>
+      <div id="appContent" class="app-content" tabindex="-1" aria-live="polite"></div>
+    </main>
+  </div>
+
+  <div class="modal-backdrop app-modal-backdrop" id="appModal" role="dialog" aria-modal="true" aria-labelledby="appModalTitle">
+    <div class="modal app-modal" id="appModalPanel" tabindex="-1">
+      <div id="appModalContent"></div>
+    </div>
+  </div>
+
+  <noscript><p class="noscript-message">O SkillMatch precisa de JavaScript para executar as demonstrações interativas.</p></noscript>
+  <script type="module" src="assets/js/pages/painel.js"></script>
+</body>
+</html>
