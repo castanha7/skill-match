@@ -206,6 +206,10 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     click('#appNav [data-view="jobs"]');
     assert.equal(document.querySelectorAll("#jobResults .job-card").length, 4);
     assert.match(document.querySelector("#jobResults").textContent, /R\$\s?1\.200/);
+    click('#jobResults [data-action="job-details"][data-id="job-demo-ti"]');
+    assert.match(document.querySelector("#appModalContent").textContent, /Por que esta oportunidade combina\?/);
+    assert.match(document.querySelector("#appModalContent").textContent, /Requisitos atendidos:/);
+    click('#appModalContent [data-action="close-modal"]');
     setValue("jobMinSalary", "1500");
     document.querySelector("#jobMinSalary").dispatchEvent(new window.Event("input", { bubbles: true }));
     assert.equal(document.querySelectorAll("#jobResults .job-card").length, 2);
@@ -632,7 +636,7 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     assert.equal((await UserService.getById("usr-demo-candidate")).status, "active");
   });
 
-  await t.test("áreas refletem as mudanças e logout encerra a sessão", async () => {
+  await t.test("áreas e dados salvos persistem após reabrir o painel; logout encerra a sessão", async () => {
     AuthService.logout();
     await AuthService.login("mari.costa+teste@skillmatch.test", "SeguraNova@789", false, "candidate");
     setDocument(dom, "painel.html");
@@ -642,10 +646,35 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     assert.ok([...document.querySelectorAll("#jobResults .job-card")].some((card) => card.textContent.includes("qualidade")));
     assert.ok(PlatformService.getCandidateNotifications("usr-demo-candidate").some((item) => item.type === "application"));
 
+    const persistedLocalStorage = Array.from({ length: localStorage.length }, (_, index) => {
+      const key = localStorage.key(index);
+      return [key, localStorage.getItem(key)];
+    });
+    const persistedSessionStorage = Array.from({ length: sessionStorage.length }, (_, index) => {
+      const key = sessionStorage.key(index);
+      return [key, sessionStorage.getItem(key)];
+    });
+    const reopenedDom = new JSDOM(readFileSync(resolve(root, "painel.html"), "utf8"), {
+      url: "http://localhost/painel.html",
+      pretendToBeVisual: true,
+      virtualConsole,
+    });
+    setBrowserGlobals(reopenedDom);
+    persistedLocalStorage.forEach(([key, value]) => localStorage.setItem(key, value));
+    persistedSessionStorage.forEach(([key, value]) => sessionStorage.setItem(key, value));
+    await importPageModule("assets/js/pages/painel.js", "candidate-reload-persistence");
+    assert.equal(AuthService.getSession()?.userId, "usr-demo-candidate");
+    assert.match((await UserService.getById("usr-demo-candidate")).resumo, /teste de integração/);
+    assert.equal(PlatformService.isFavorite("usr-demo-candidate", "job-demo-ti"), true);
+    assert.ok(PlatformService.getCandidateApplications("usr-demo-candidate").some((application) => application.job?.title.includes("Auxiliar de logística")));
+    assert.ok(PlatformService.getInterviewHistory("usr-demo-candidate").length > 0);
+    assert.ok(PlatformService.getCandidateConnections("usr-demo-candidate").some((connection) => connection.companyId === "company-demo"));
+
     click("#logoutButtonTop");
     assert.equal(document.querySelector("#appModal").classList.contains("open"), true);
     click('#appModalContent [data-action="confirm-modal"]');
     await waitFor(() => AuthService.getSession() === null, "O botão de logout não encerrou a sessão.");
+    reopenedDom.window.close();
   });
 
   assert.deepEqual(unexpectedJSDOMErrors, [], unexpectedJSDOMErrors.map((error) => error.stack || error.message).join("\n"));

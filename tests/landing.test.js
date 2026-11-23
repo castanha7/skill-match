@@ -17,6 +17,7 @@ function click(selector) {
 
 test('página pública mostra oportunidades demonstrativas e busca, filtro e acesso funcionam', async () => {
   const html = readFileSync(resolve(root, 'index.html'), 'utf8');
+  assert.match(html, /Suas habilidades\. Sua oportunidade\./);
   const dom = new JSDOM(html, { url: 'http://localhost/', pretendToBeVisual: true });
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;

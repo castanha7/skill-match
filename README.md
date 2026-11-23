@@ -1,28 +1,28 @@
 # SkillMatch
 
-> **Seu primeiro emprego começa aqui.** Encontre oportunidades que combinam com você — explore antes de criar uma conta.
+> **Suas habilidades. Sua oportunidade.** Encontre oportunidades que combinam com você — explore antes de criar uma conta.
 
 SkillMatch é uma plataforma de empregabilidade jovem construída sobre o projeto existente, com frontend estático, fluxos demonstrativos locais e uma API Express/MySQL preparada separadamente. A página pública agora é o catálogo; login e cadastro ficam em páginas próprias.
 
 ## Estado honesto do projeto
 
-A página inicial mostra **quatro anúncios fictícios de demonstração** para exercitar pesquisa, filtros e detalhes. Não são vagas reais, empresas contratantes ou fontes externas. Nesta versão, o SkillMatch **não pesquisou na internet** e não confirma contratação. A interface não inventa links, salários, avaliação de usuários ou resultados de processo seletivo.
+A página inicial mostra **quatro anúncios fictícios de demonstração** para exercitar pesquisa, filtros e detalhes. Não são vagas reais, empresas contratantes ou fontes externas. Nesta versão, o SkillMatch **não pesquisou na internet** e não confirma contratação. As faixas salariais dos exemplos são fictícias e identificadas como demonstrativas; não há links externos, avaliações de usuários ou resultados de processos seletivos inventados.
 
-A experiência pública oferece busca por cargo/área e cidade, filtros de tipo, ordenação, detalhes da oportunidade, aviso de status demonstrativo, seção de empresas associadas aos exemplos, e convite para criar conta ao tentar salvar ou se candidatar. O fluxo de candidatura é explicativo: não envia dados para uma empresa.
+A experiência pública oferece busca por cargo/área e cidade, filtros de tipo, ordenação, detalhes da oportunidade, faixas salariais explicitamente demonstrativas, aviso de status, seção de empresas associadas aos exemplos e convite para criar conta ao tentar salvar ou se candidatar. O fluxo de candidatura é explicativo: não envia dados para uma empresa.
 
 Candidato, empresa e administração mantêm os fluxos de cadastro/login/painel que já existiam. No frontend publicado, esses fluxos continuam **demonstrativos e limitados ao navegador** (`localStorage`/`sessionStorage`). Nunca use senha reutilizada, dados sensíveis ou esse modo como autenticação de produção. O painel administrativo e os perfis de demonstração não são protegidos contra alteração pelo proprietário do navegador.
 
 ## O que funciona agora
 
-- **Página pública (`index.html`)**: busca e filtro por cargo, empresa, requisito, cidade/UF e tipo; ordenação; detalhes e estados transparentes; menu responsivo; redirecionamento para cadastro/login ao tentar salvar/candidatar-se.
-- **Cadastro/login demonstrativos**: validação, senha derivada localmente, editar perfil, foto, cursos, experiências, interesses, disponibilidade e preferências; recuperação de senha gera código local e não envia e-mail.
-- **Painel do candidato**: início, vagas, Radar, candidaturas locais, currículo imprimível/exportável pela impressão do navegador, perfil, cursos/planejamento, notificações e configurações.
+- **Página pública (`index.html`)**: busca e filtro por cargo, empresa, requisito, cidade/UF e tipo; ordenação; faixas salariais somente demonstrativas; detalhes e estados transparentes; menu responsivo; redirecionamento para cadastro/login ao tentar salvar/candidatar-se.
+- **Cadastro/login demonstrativos**: validação, senha derivada localmente, edição de perfil, foto, cursos, experiências, interesses, disponibilidade e preferências; recuperação de senha gera código local e não envia e-mail.
+- **Painel do candidato**: início, vagas com filtro por remuneração e ordenação, Radar, candidaturas locais, currículo imprimível/exportável pela impressão do navegador, perfil, cursos/planejamento, notificações e configurações.
 - **Novos fluxos locais de engajamento**: favoritos; prática de entrevista contextual com respostas em texto, feedback acolhedor baseado em regras locais e histórico apagável; ditado opcional apenas quando o navegador oferece reconhecimento de fala. A prática do painel não usa IA nem decide aptidão.
 - **Conexões demonstrativas**: diretório e convites locais, mensagens apenas após aceite, histórico, bloqueio e denúncia. A exclusão da conta remove no navegador os dados associados e encerra a sessão. Candidato controla visibilidade; perfis começam ocultos até consentimento explícito. Contato fica oculto sem conexão autorizada ou candidatura e continua sujeito à preferência de privacidade. Nada é enviado a empresas reais.
 - **Banco de talentos local**: filtros por habilidade, escolaridade e cidade, lista salva pela empresa e consulta restrita aos perfis que autorizaram visibilidade. São dados de teste no navegador, não um serviço real.
 - **Radar local**: endereço de referência, cidade/UF, bairro/região, raio, tipo, área e modalidade são filtros persistidos neste navegador. O endereço é analisado localmente e reconhece sete centros urbanos do Paraná; o raio usa distância aproximada em linha reta entre centros, não o ponto exato da rua nem rota. Endereço não reconhecido deixa o raio sem aplicação, com aviso visível. Nenhum geocodificador externo ou mapa está conectado.
 - **Compatibilidade demonstrativa**: serviço local explica correspondência de habilidades, área, tipo, localização e escolaridade (incluindo nível e “em curso/concluído”). Sugestões podem variar diariamente e excluem oportunidades com interesse já registrado; o percentual não é IA nem chance de contratação.
-- **Empresa demonstrativa**: cadastro empresarial (`cadastro-empresa.html`) com validação dos dígitos verificadores do CNPJ (inclui formato alfanumérico), login, perfil, publicação/edição/pausa de vagas, consulta de candidaturas e alteração de status. CNPJ é armazenado localmente no modo demo; validar seus dígitos não confirma existência, situação cadastral nem titularidade. **Admin demonstrativo**: moderação, cadastros e relatos locais. Esses dados ficam no navegador e não são compartilhados; nenhuma vaga da conta de teste é divulgada como contratação real.
+- **Empresa demonstrativa**: cadastro empresarial (`cadastro-empresa.html`) com validação dos dígitos verificadores do CNPJ (inclui formato alfanumérico), login, perfil, publicação/edição/pausa de vagas com faixa salarial opcional, consulta de candidaturas, histórico e painel do funil. CNPJ é armazenado localmente no modo demo; validar seus dígitos não confirma existência, situação cadastral nem titularidade. **Admin demonstrativo**: moderação, cadastros e relatos locais. Esses dados ficam no navegador e não são compartilhados; nenhuma vaga da conta de teste é divulgada como contratação real.
 - **API (`backend/`)**: autenticação com bcrypt/JWT, verificação do estado da conta nas requisições autenticadas, perfil/consentimento, candidaturas, conexões/mensagens autorizadas, banco de talentos e rota opcional de feedback por IA. Vagas, mensagens e perfis do painel visual ainda usam dados locais: **as telas autenticadas não foram conectadas a essas rotas**, e MySQL/credenciais externas não foram configurados nem testados.
 
 ## Executar o frontend estático
@@ -43,7 +43,7 @@ Abra `http://localhost:5173`. A rota inicial é `index.html`; acesso/login fica 
 | Empresa | `empresa@skillmatch.com` | `Skill@123` |
 | Administração | `admin@skillmatch.com` | `Admin@123` |
 
-São contas públicas fictícias, criadas no navegador. Não são credenciais de produção.
+São contas públicas fictícias, criadas no navegador. Não são credenciais de produção. Para um passo a passo de apresentação com essas contas, consulte o [roteiro rápido](docs/ROTEIRO-APRESENTACAO.md).
 
 ## API separada (opcional)
 
