@@ -29,6 +29,8 @@ test('página pública mostra oportunidades demonstrativas e busca, filtro e ace
   for (let attempt = 0; attempt < 80 && document.querySelector('#publicCatalogGrid').getAttribute('aria-busy') === 'true'; attempt++) await pause();
 
   assert.equal(document.querySelectorAll('.public-job-card').length, 4);
+  const landingCss = readFileSync(resolve(root, 'assets/css/landing.css'), 'utf8');
+  assert.doesNotMatch(landingCss, /\.floating-note\s*\{[^}]*\banimation(?:-name)?\s*:/s);
   assert.match(document.querySelector('.public-job-card').textContent, /R\$\s?1\.200/);
   assert.match(document.querySelector('#catalogNotice').textContent, /Nenhuma vaga real foi pesquisada ou confirmada/);
   assert.match(document.querySelector('#publicResultCount').textContent, /4 oportunidades demonstrativas/);
