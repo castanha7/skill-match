@@ -168,6 +168,15 @@ function locationText(place) {
   return `${place.city}${place.state ? `, ${place.state}` : ""}`;
 }
 
+function salaryText(job) {
+  if (job?.salaryMin === null || job?.salaryMin === undefined || job?.salaryMax === null || job?.salaryMax === undefined) return "A combinar";
+  const min = Number(job.salaryMin);
+  const max = Number(job.salaryMax);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return "A combinar";
+  const format = (amount) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 2 }).format(amount);
+  return min === max ? `${format(min)} / mês` : `${format(min)}–${format(max)} / mês`;
+}
+
 function statusClass(status) {
   const normalized = normalizedText(status);
   if (["contratada", "entrevista", "aprovada", "ativo", "resolvido", "verificada"].some((key) => normalized.includes(key))) return "success";
@@ -245,6 +254,7 @@ function jobCard(job, { showScore = false, showDescription = true, applications 
       ${session.role === "candidate" ? `<span>${ICONS.radar}${escapeHtml(distanceLabel(currentUser, job))}</span>` : ""}
       <span>${ICONS.jobs}${escapeHtml(job.type || "Tipo não informado")}</span>
       <span>${escapeHtml(job.modality || "Modalidade não informada")}</span>
+      <span>${escapeHtml(salaryText(job))}</span>
     </div>
     ${showDescription ? `<p class="job-card-description">${escapeHtml(job.description)}</p>` : ""}
     ${requirementTags ? `<div class="tag-list">${requirementTags}</div>` : ""}
@@ -474,6 +484,8 @@ function renderJobsPage() {
     <div class="field"><label for="jobType">Tipo</label><select class="input" id="jobType">${optionList(CATALOGS.tiposVaga, "", "Todos os tipos")}</select></div>
     <div class="field"><label for="jobModality">Modalidade</label><select class="input" id="jobModality">${optionList(CATALOGS.modalidades, "", "Todas")}</select></div>
     <div class="field"><label for="jobCity">Cidade ou UF</label><input class="input" id="jobCity" type="search" placeholder="Ex.: Curitiba ou PR" /></div>
+    <div class="field"><label for="jobMinSalary">Remuneração mínima (R$/mês)</label><input class="input" id="jobMinSalary" type="number" min="0" max="1000000" step="100" inputmode="decimal" placeholder="Ex.: 1.500" /><p class="form-help">Oculta anúncios sem faixa informada.</p></div>
+    <div class="field"><label for="jobSort">Ordenar por</label><select class="input" id="jobSort"><option value="match">Mais compatíveis</option><option value="salary">Maior remuneração</option><option value="recent">Mais recentes</option><option value="title">Cargo (A–Z)</option></select></div>
   </section>
   <p class="results-caption" id="jobResultsCaption"></p>
   <div class="job-list" id="jobResults"></div>`;
@@ -487,14 +499,32 @@ function renderFilteredJobs() {
   const type = $("#jobType", appContent)?.value || "";
   const modality = $("#jobModality", appContent)?.value || "";
   const city = normalizedText($("#jobCity", appContent)?.value);
+  const salaryRaw = $("#jobMinSalary", appContent)?.value.trim() || "";
+  const minimumSalary = salaryRaw === "" ? null : Number(salaryRaw);
+  const sortBy = $("#jobSort", appContent)?.value || "match";
   const jobs = PlatformService.getPublishedJobs().filter((job) => {
     const company = companyName(job.companyId);
     const termMatches = !term || normalizedText(`${job.title} ${company} ${job.area} ${job.description} ${(job.requirements || []).join(" ")}`).includes(term);
     const cityMatches = !city || normalizedText(`${job.city} ${job.state} ${job.address}`).includes(city);
-    return termMatches && (!area || job.area === area) && (!type || job.type === type) && (!modality || job.modality === modality) && cityMatches;
+    const salaryMin = job.salaryMin === null || job.salaryMin === undefined ? null : Number(job.salaryMin);
+    const salaryMax = job.salaryMax === null || job.salaryMax === undefined ? null : Number(job.salaryMax);
+    const hasSalary = Number.isFinite(salaryMin) && Number.isFinite(salaryMax);
+    const salaryMatches = minimumSalary === null || (Number.isFinite(minimumSalary) && hasSalary && salaryMax >= minimumSalary);
+    return termMatches && (!area || job.area === area) && (!type || job.type === type) && (!modality || job.modality === modality) && cityMatches && salaryMatches;
   });
-  $("#jobResultsCaption", appContent).textContent = `${jobs.length} resultado(s) · todos os anúncios são demonstrativos e não confirmam contratação.`;
-  results.innerHTML = jobs.length ? jobs.map((job) => jobCard(job, { showScore: true })).join("") : emptyState("Nenhuma oportunidade encontrada", "Altere os filtros ou aguarde a aprovação de novos anúncios demonstrativos.");
+  const salaryCeiling = (job) => job.salaryMax === null || job.salaryMax === undefined || !Number.isFinite(Number(job.salaryMax)) ? null : Number(job.salaryMax);
+  if (sortBy === "salary") jobs.sort((a, b) => {
+    const salaryA = salaryCeiling(a);
+    const salaryB = salaryCeiling(b);
+    if (salaryA === null) return salaryB === null ? 0 : 1;
+    if (salaryB === null) return -1;
+    return salaryB - salaryA;
+  });
+  else if (sortBy === "recent") jobs.sort((a, b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")));
+  else if (sortBy === "title") jobs.sort((a, b) => a.title.localeCompare(b.title, "pt-BR"));
+  else jobs.sort((a, b) => jobScore(b, currentUser) - jobScore(a, currentUser));
+  $("#jobResultsCaption", appContent).textContent = `${jobs.length} resultado(s)${minimumSalary !== null && Number.isFinite(minimumSalary) ? ` · remuneração máxima de pelo menos ${salaryText({ salaryMin: minimumSalary, salaryMax: minimumSalary }).replace(" / mês", "")}` : ""} · todos os anúncios são demonstrativos e não confirmam contratação.`;
+  results.innerHTML = jobs.length ? jobs.map((job) => jobCard(job, { showScore: true })).join("") : emptyState("Nenhuma oportunidade encontrada", "Altere os filtros, inclusive a remuneração mínima, ou aguarde novos anúncios demonstrativos.");
 }
 
 function renderFavoritesPage() {
@@ -734,12 +764,15 @@ function renderCompanyHome() {
   const pendingJobs = jobs.filter((job) => job.active !== false && !job.approved && !job.removed);
   const applications = PlatformService.getCompanyApplications(session.companyId);
   const applicants = new Set(applications.map((application) => application.candidateId)).size;
+  const funnel = ["Recebida", "Em análise", "Entrevista", "Contratada", "Não selecionada", "Desistiu"]
+    .map((status) => ({ status, count: applications.filter((application) => application.status === status).length }));
   return `<div class="stat-grid">
     <div class="stat-card"><div class="stat-card-top"><span>Anúncios ativos</span><span class="stat-icon">${ICONS.jobs}</span></div><strong>${visibleJobs.length}</strong><span>Visíveis no catálogo demonstrativo</span></div>
     <div class="stat-card"><div class="stat-card-top"><span>Aguardando revisão</span><span class="stat-icon">${ICONS.shield}</span></div><strong>${pendingJobs.length}</strong><span>Moderação da conta admin local</span></div>
     <div class="stat-card"><div class="stat-card-top"><span>Interesses registrados</span><span class="stat-icon">${ICONS.applications}</span></div><strong>${applications.length}</strong><span>Sem envio para sistemas externos</span></div>
     <div class="stat-card"><div class="stat-card-top"><span>Candidatos únicos</span><span class="stat-icon">${ICONS.people}</span></div><strong>${applicants}</strong><span>Perfis demonstrativos neste navegador</span></div>
   </div>
+  <section class="panel-card" style="margin-bottom:1rem"><div class="card-head"><div><h2>Funil de candidaturas</h2><p class="panel-card-subtitle">Distribuição atual dos interesses locais pelos status do processo demonstrativo.</p></div>${button("Gerenciar candidaturas", "go-view", { style: "btn-ghost", small: true, id: "company-applicants" })}</div><div class="tag-list">${funnel.map(({ status, count }) => `<span class="status-pill ${statusClass(status)}">${escapeHtml(status)}: ${count}</span>`).join("")}</div><p class="form-help">Contagens informativas; não representam processos seletivos reais nem taxa de contratação.</p></section>
   <div class="panel-grid two">
     <section class="panel-card"><div class="card-head"><div><h2>Olá, ${escapeHtml(firstName(currentCompany?.name || currentUser.nome))}</h2><p class="panel-card-subtitle">Este painel está ligado à conta empresarial demonstrativa.</p></div><span class="demo-tag">Empresa fictícia</span></div><p style="color:var(--text-muted);font-size:.86rem">${escapeHtml(currentCompany?.description || "Complete o cadastro empresarial para apresentar melhor sua organização.")}</p><div class="quick-link-row">${button("Editar dados da empresa", "go-view", { style: "btn-ghost", small: true, id: "company-profile" })}${button("Publicar nova vaga", "new-job", { small: true })}${button("Banco de talentos", "go-view", { style: "btn-ghost", small: true, id: "company-talent" })}${button("Conexões e mensagens", "go-view", { style: "btn-ghost", small: true, id: "company-connections" })}</div></section>
     <section class="panel-card is-tinted"><div class="eyebrow">Transparência</div><h2>Publicação demonstrativa</h2><p style="margin-top:.45rem">Novos anúncios são fictícios, ficam pendentes da revisão local e só aparecem no catálogo após aprovação pela conta de administração.</p><div class="quick-link-row">${button("Gerenciar anúncios", "go-view", { style: "btn-ghost", small: true, id: "company-jobs" })}</div></section>
@@ -771,8 +804,11 @@ function companyJobStatus(job) {
 
 function renderCompanyJobsPage() {
   const jobs = PlatformService.getCompanyJobs(session.companyId);
+  const applications = PlatformService.getCompanyApplications(session.companyId);
+  const applicationCounts = new Map();
+  applications.forEach((application) => applicationCounts.set(application.jobId, (applicationCounts.get(application.jobId) || 0) + 1));
   return `<section class="panel-card" style="margin-bottom:1rem"><div class="card-head"><div><h2>Gerencie seus anúncios</h2><p class="panel-card-subtitle">Qualquer anúncio criado aqui é marcado como demonstração e não confirma contratação.</p></div>${button("Publicar vaga", "new-job", { small: true })}</div></section>
-    ${jobs.length ? `<div class="job-list">${jobs.map((job) => `<article class="job-card"><div class="job-card-head"><div><h3 class="job-card-title">${escapeHtml(job.title)}</h3><p class="job-company">${escapeHtml(job.area)} · ${escapeHtml(job.type)} · ${escapeHtml(locationText(job))}</p></div>${statusBadge(companyJobStatus(job))}</div><p class="job-card-description">${escapeHtml(job.description)}</p><div class="job-card-footer"><span class="demo-tag">Demonstração · não confirmada</span><div class="job-card-actions"><button type="button" class="btn btn-ghost btn-sm" data-action="edit-company-job" data-id="${escapeHtml(job.id)}">Editar</button><button type="button" class="btn btn-ghost btn-sm" data-action="toggle-company-job" data-id="${escapeHtml(job.id)}" data-active="${job.active === false || job.removed ? "true" : "false"}">${job.active === false || job.removed ? "Reativar" : "Pausar"}</button><button type="button" class="btn btn-danger-ghost btn-sm" data-action="archive-company-job" data-id="${escapeHtml(job.id)}">Excluir</button></div></div></article>`).join("")}</div>` : emptyState("Nenhum anúncio publicado", "Use “Publicar vaga” para criar um anúncio demonstrativo que poderá ser revisado pela administração.", "jobs")}`;
+    ${jobs.length ? `<div class="job-list">${jobs.map((job) => `<article class="job-card"><div class="job-card-head"><div><h3 class="job-card-title">${escapeHtml(job.title)}</h3><p class="job-company">${escapeHtml(job.area)} · ${escapeHtml(job.type)} · ${escapeHtml(locationText(job))}</p><p class="job-company">${escapeHtml(salaryText(job))} · ${applicationCounts.get(job.id) || 0} interesse(s) registrado(s)</p></div>${statusBadge(companyJobStatus(job))}</div><p class="job-card-description">${escapeHtml(job.description)}</p><div class="job-card-footer"><span class="demo-tag">Demonstração · não confirmada</span><div class="job-card-actions"><button type="button" class="btn btn-ghost btn-sm" data-action="edit-company-job" data-id="${escapeHtml(job.id)}">Editar</button><button type="button" class="btn btn-ghost btn-sm" data-action="toggle-company-job" data-id="${escapeHtml(job.id)}" data-active="${job.active === false || job.removed ? "true" : "false"}">${job.active === false || job.removed ? "Reativar" : "Pausar"}</button><button type="button" class="btn btn-danger-ghost btn-sm" data-action="archive-company-job" data-id="${escapeHtml(job.id)}">Excluir</button></div></div></article>`).join("")}</div>` : emptyState("Nenhum anúncio publicado", "Use “Publicar vaga” para criar um anúncio demonstrativo que poderá ser revisado pela administração.", "jobs")}`;
 }
 
 function renderCompanyApplicantsPage() {
@@ -780,7 +816,7 @@ function renderCompanyApplicantsPage() {
   if (!applications.length) return `<section class="panel-card"><div class="card-head"><div><h2>Candidatos interessados</h2><p class="panel-card-subtitle">Os perfis só aparecem aqui após a pessoa registrar interesse em uma vaga local.</p></div></div>${emptyState("Sem candidaturas", "Entre na conta demonstrativa de candidato, registre interesse em uma vaga e volte para consultar o fluxo.", "people")}</section>`;
   return `<section class="panel-card" style="margin-bottom:1rem"><h2>Currículos e candidaturas</h2><p class="panel-card-subtitle">Os status não enviam mensagens nem representam processos seletivos reais.</p></section><div class="job-list">${applications.map((application) => {
     const candidate = application.candidate;
-    return `<article class="application-card"><div><div style="display:flex;gap:.55rem;align-items:center;flex-wrap:wrap"><h3>${escapeHtml(candidate?.nome || "Perfil indisponível")}</h3>${statusBadge(application.status)}</div><p>${escapeHtml(application.job?.title || "Vaga arquivada")} · ${escapeHtml(locationText(candidate))} · ${formattedDate(application.createdAt, true)}</p><p>${escapeHtml(candidate?.curso || candidate?.escolaridade || "Formação não informada")}</p><div class="tag-list">${(candidate?.habilidades || []).slice(0, 5).map((skill) => `<span class="tag-view">${escapeHtml(skill)}</span>`).join("")}</div></div><div class="job-card-actions"><button type="button" class="btn btn-ghost btn-sm" data-action="view-candidate" data-id="${escapeHtml(candidate?.id || "")}">Consultar currículo</button><select class="input" style="width:auto;min-width:140px" data-application-status="${escapeHtml(application.id)}" aria-label="Atualizar status da candidatura">${[...APPLICATION_STATUSES, ...(application.status === "Desistiu" ? ["Desistiu"] : [])].map((status) => `<option value="${escapeHtml(status)}" ${application.status === status ? "selected" : ""}>${escapeHtml(status)}</option>`).join("")}</select></div></article>`;
+    return `<article class="application-card"><div><div style="display:flex;gap:.55rem;align-items:center;flex-wrap:wrap"><h3>${escapeHtml(candidate?.nome || "Perfil indisponível")}</h3>${statusBadge(application.status)}</div><p>${escapeHtml(application.job?.title || "Vaga arquivada")} · ${escapeHtml(locationText(candidate))} · ${formattedDate(application.createdAt, true)}</p><p>${escapeHtml(candidate?.curso || candidate?.escolaridade || "Formação não informada")}</p><div class="tag-list">${(candidate?.habilidades || []).slice(0, 5).map((skill) => `<span class="tag-view">${escapeHtml(skill)}</span>`).join("")}</div><ul class="application-history">${(application.history || []).slice(-4).reverse().map((entry) => `<li>${escapeHtml(entry.status)} — ${formattedDate(entry.at, true)}${entry.note ? ` · ${escapeHtml(entry.note)}` : ""}</li>`).join("")}</ul></div><div class="job-card-actions"><button type="button" class="btn btn-ghost btn-sm" data-action="view-candidate" data-id="${escapeHtml(candidate?.id || "")}">Consultar currículo</button><select class="input" style="width:auto;min-width:140px" data-application-status="${escapeHtml(application.id)}" aria-label="Atualizar status da candidatura">${[...APPLICATION_STATUSES, ...(application.status === "Desistiu" ? ["Desistiu"] : [])].map((status) => `<option value="${escapeHtml(status)}" ${application.status === status ? "selected" : ""}>${escapeHtml(status)}</option>`).join("")}</select></div></article>`;
   }).join("")}</div>`;
 }
 
@@ -875,7 +911,7 @@ function openJobDetails(jobId) {
   const score = session.role === "candidate" ? jobScore(job, currentUser) : null;
   const explanation = session.role === "candidate" ? explainJobMatch(job, currentUser) : null;
   const matchDetails = explanation ? `<div class="app-modal-section"><h3>Por que esta oportunidade combina?</h3><p><strong>${score}% de compatibilidade estimada</strong> — cálculo explicável por regras locais, não IA nem promessa de contratação.</p><ul>${explanation.reasons.map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}</ul><p><strong>Requisitos atendidos:</strong> ${explanation.matched.length ? explanation.matched.map(escapeHtml).join(", ") : "nenhum dos requisitos listados consta no perfil ainda"}.</p><p><strong>A desenvolver:</strong> ${explanation.missing.length ? explanation.missing.map(escapeHtml).join(", ") : "nenhum requisito listado pendente"}.</p><p><strong>Próximo passo:</strong> ${escapeHtml(explanation.improvement)}</p></div>` : "";
-  const body = `<div class="app-modal-section"><span class="demo-tag">Vaga demonstrativa · contratação não confirmada</span><p style="margin-top:.6rem"><strong>Empresa:</strong> ${escapeHtml(company?.name || "Empresa demonstrativa")}</p><p><strong>Local:</strong> ${escapeHtml(job.address || locationText(job))}</p><p><strong>Distância:</strong> ${session.role === "candidate" ? escapeHtml(distanceLabel(currentUser, job)) : "Não calculada neste painel."}</p><p><strong>Tipo / modalidade:</strong> ${escapeHtml(job.type)} · ${escapeHtml(job.modality)}</p><p><strong>Escolaridade:</strong> ${escapeHtml(job.education || "Não informada")}</p></div>${matchDetails}<div class="app-modal-section"><h3>Descrição</h3><p>${escapeHtml(job.description)}</p></div><div class="app-modal-section"><h3>Requisitos</h3>${requirements ? `<ul>${requirements}</ul>` : `<p>Não informados.</p>`}</div><div class="app-modal-section"><h3>Benefícios</h3>${benefits ? `<ul>${benefits}</ul>` : `<p>Não informados.</p>`}</div>${url ? `<div class="app-modal-section"><h3>Canal externo</h3><p><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Acessar link informado pela empresa</a></p></div>` : ""}<p class="form-help" style="margin-top:1rem">Este anúncio existe apenas no protótipo local. Registrar interesse não envia candidatura a uma empresa real.</p>`;
+  const body = `<div class="app-modal-section"><span class="demo-tag">Vaga demonstrativa · contratação não confirmada</span><p style="margin-top:.6rem"><strong>Empresa:</strong> ${escapeHtml(company?.name || "Empresa demonstrativa")}</p><p><strong>Local:</strong> ${escapeHtml(job.address || locationText(job))}</p><p><strong>Distância:</strong> ${session.role === "candidate" ? escapeHtml(distanceLabel(currentUser, job)) : "Não calculada neste painel."}</p><p><strong>Tipo / modalidade:</strong> ${escapeHtml(job.type)} · ${escapeHtml(job.modality)}</p><p><strong>Remuneração:</strong> ${escapeHtml(salaryText(job))} ${job.salaryMin !== null && job.salaryMin !== undefined ? "(faixa mensal bruta informada no anúncio demonstrativo)" : "(não informada)"}</p><p><strong>Escolaridade:</strong> ${escapeHtml(job.education || "Não informada")}</p></div>${matchDetails}<div class="app-modal-section"><h3>Descrição</h3><p>${escapeHtml(job.description)}</p></div><div class="app-modal-section"><h3>Requisitos</h3>${requirements ? `<ul>${requirements}</ul>` : `<p>Não informados.</p>`}</div><div class="app-modal-section"><h3>Benefícios</h3>${benefits ? `<ul>${benefits}</ul>` : `<p>Não informados.</p>`}</div>${url ? `<div class="app-modal-section"><h3>Canal externo</h3><p><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Acessar link informado pela empresa</a></p></div>` : ""}<p class="form-help" style="margin-top:1rem">Este anúncio existe apenas no protótipo local. Registrar interesse não envia candidatura a uma empresa real.</p>`;
   const actions = session.role === "candidate" && !hasApplied(job.id) && job.approved && job.active !== false
     ? `<button type="button" class="btn btn-ghost" data-action="close-modal">Fechar</button><button type="button" class="btn btn-primary" data-action="apply-job" data-id="${escapeHtml(job.id)}">Registrar interesse</button>`
     : `<button type="button" class="btn btn-primary" data-action="close-modal">Fechar</button>`;
@@ -917,6 +953,8 @@ function openJobEditor(jobId = null, actorRole = "company") {
       <div class="form-row-3"><div class="field"><label for="jobCity">Cidade</label><input class="input" id="jobCity" value="${escapeHtml(job?.city || currentCompany?.city || "")}" /><p class="error-msg">Informe a cidade.</p></div><div class="field"><label for="jobState">UF</label><select class="input" id="jobState">${optionList(CATALOGS.estados, job?.state || currentCompany?.state || "", "UF")}</select><p class="error-msg">Selecione a UF.</p></div></div>
       <div class="field"><label for="jobAddress">Endereço ou região</label><input class="input" id="jobAddress" value="${escapeHtml(job?.address || "")}" placeholder="Bairro, região ou referência" /><p class="error-msg">Informe uma referência de localização.</p></div>
       <div class="form-row"><div class="field"><label for="jobEducation">Escolaridade exigida</label><input class="input" id="jobEducation" value="${escapeHtml(job?.education || "")}" placeholder="Ex.: Ensino Médio em curso" /><p class="error-msg">Informe a escolaridade.</p></div><div class="field"><label for="jobApplicationUrl">Link para candidatura externa <span class="optional">(opcional)</span></label><input class="input" type="url" id="jobApplicationUrl" value="${escapeHtml(job?.applicationUrl || "")}" placeholder="https://..." /><p class="error-msg">Informe uma URL http(s) válida.</p></div></div>
+      <div class="form-row"><div class="field"><label for="jobSalaryMin">Remuneração mensal mínima <span class="optional">(opcional)</span></label><input class="input" type="number" min="0" max="1000000" step="0.01" id="jobSalaryMin" value="${escapeHtml(job?.salaryMin ?? "")}" placeholder="Ex.: 1.200,00" /><p class="error-msg">Informe um valor mensal válido.</p></div><div class="field"><label for="jobSalaryMax">Remuneração mensal máxima <span class="optional">(opcional)</span></label><input class="input" type="number" min="0" max="1000000" step="0.01" id="jobSalaryMax" value="${escapeHtml(job?.salaryMax ?? "")}" placeholder="Ex.: 1.800,00" /><p class="error-msg">Informe um valor mensal válido.</p></div></div>
+      <p class="form-help">Deixe ambos em branco para não divulgar faixa salarial. Os exemplos de remuneração são fictícios; informe valores mensais brutos.</p>
       <div class="field"><label for="jobDescription">Descrição da oportunidade</label><textarea class="input" id="jobDescription" rows="4" maxlength="2000">${escapeHtml(job?.description || "")}</textarea><p class="error-msg">Descreva a oportunidade com pelo menos 20 caracteres.</p></div>
       <div class="form-row"><div class="field"><label for="jobRequirements">Requisitos <span class="optional">(um por linha)</span></label><textarea class="input" id="jobRequirements" rows="4">${escapeHtml((job?.requirements || []).join("\n"))}</textarea><p class="error-msg">Informe ao menos um requisito.</p></div><div class="field"><label for="jobBenefits">Benefícios <span class="optional">(um por linha)</span></label><textarea class="input" id="jobBenefits" rows="4">${escapeHtml((job?.benefits || []).join("\n"))}</textarea></div></div>
       <label class="check-row"><input type="checkbox" id="jobActive" ${job?.active === false ? "" : "checked"} /><span>Manter anúncio ativo (se aprovado).</span></label>
@@ -1084,8 +1122,10 @@ function runAction(element) {
       showToast(element.dataset.progress === "complete" ? "Tema marcado como concluído neste navegador." : "Plano de desenvolvimento atualizado.", "success");
       break;
     case "clear-job-filters":
-      ["jobSearch", "jobCity"].forEach((inputId) => { const input = $(`#${inputId}`, appContent); if (input) input.value = ""; });
+      ["jobSearch", "jobCity", "jobMinSalary"].forEach((inputId) => { const input = $(`#${inputId}`, appContent); if (input) input.value = ""; });
       ["jobArea", "jobType", "jobModality"].forEach((inputId) => { const input = $(`#${inputId}`, appContent); if (input) input.value = ""; });
+      const sort = $("#jobSort", appContent);
+      if (sort) sort.value = "match";
       renderFilteredJobs();
       break;
     case "new-job": openJobEditor(); break;
@@ -1327,6 +1367,20 @@ async function handleFormSubmit(form) {
       const description = $("#jobDescription", form);
       const requirements = $("#jobRequirements", form);
       const applicationUrl = $("#jobApplicationUrl", form);
+      const salaryMinField = $("#jobSalaryMin", form);
+      const salaryMaxField = $("#jobSalaryMax", form);
+      const hasSalaryMin = salaryMinField.value.trim() !== "";
+      const hasSalaryMax = salaryMaxField.value.trim() !== "";
+      const salaryMin = hasSalaryMin ? Number(salaryMinField.value) : null;
+      const salaryMax = hasSalaryMax ? Number(salaryMaxField.value) : null;
+      const validMonthlyAmount = (amount) => Number.isFinite(amount) && amount >= 0 && amount <= 1_000_000;
+      let salaryMinValid = !hasSalaryMin || validMonthlyAmount(salaryMin);
+      let salaryMaxValid = !hasSalaryMax || validMonthlyAmount(salaryMax);
+      if (hasSalaryMin !== hasSalaryMax) {
+        if (!hasSalaryMin) salaryMinValid = false;
+        if (!hasSalaryMax) salaryMaxValid = false;
+      }
+      if (hasSalaryMin && hasSalaryMax && salaryMax < salaryMin) salaryMaxValid = false;
       let valid = true;
       valid = markField(title, Validators.required(title.value), "Informe o cargo.") && valid;
       valid = markField(area, Validators.required(area.value), "Selecione a área.") && valid;
@@ -1339,11 +1393,13 @@ async function handleFormSubmit(form) {
       valid = markField(description, description.value.trim().length >= 20, "Descreva a oportunidade com pelo menos 20 caracteres.") && valid;
       valid = markField(requirements, Validators.required(requirements.value), "Informe ao menos um requisito.") && valid;
       valid = markField(applicationUrl, Validators.url(applicationUrl.value), "Informe uma URL http(s) válida.") && valid;
+      valid = markField(salaryMinField, salaryMinValid, hasSalaryMax && !hasSalaryMin ? "Informe também a remuneração mínima." : "Informe um valor mensal válido entre R$ 0 e R$ 1.000.000.") && valid;
+      valid = markField(salaryMaxField, salaryMaxValid, hasSalaryMin && !hasSalaryMax ? "Informe também a remuneração máxima." : hasSalaryMin && hasSalaryMax && salaryMax < salaryMin ? "O máximo deve ser igual ou maior que o mínimo." : "Informe um valor mensal válido entre R$ 0 e R$ 1.000.000.") && valid;
       if (!valid) return;
       const fields = {
         title: title.value, area: area.value, type: type.value, modality: modality.value,
         city: city.value, state: state.value, address: address.value, education: education.value,
-        description: description.value, requirements: requirements.value, benefits: formValue(form, "jobBenefits"),
+        description: description.value, salaryMin, salaryMax, requirements: requirements.value, benefits: formValue(form, "jobBenefits"),
         applicationUrl: applicationUrl.value, active: $("#jobActive", form).checked,
       };
       const jobId = form.dataset.jobId;
@@ -1427,7 +1483,7 @@ appModalContent.addEventListener("click", (event) => {
 });
 
 appContent.addEventListener("input", (event) => {
-  if (["jobSearch", "jobCity"].includes(event.target.id)) renderFilteredJobs();
+  if (["jobSearch", "jobCity", "jobMinSalary"].includes(event.target.id)) renderFilteredJobs();
   if (event.target.dataset.filter === "admin-candidates") renderAdminCandidatesTable(event.target.value);
   if (event.target.dataset.filter === "admin-companies") renderAdminCompaniesTable(event.target.value);
   if (event.target.dataset.filter === "company-talents") renderCompanyTalentResults();
@@ -1435,7 +1491,7 @@ appContent.addEventListener("input", (event) => {
   if (event.target.id === "interviewTargetRole") interviewDraft.targetRole = event.target.value;
 });
 appContent.addEventListener("change", (event) => {
-  if (["jobArea", "jobType", "jobModality"].includes(event.target.id)) renderFilteredJobs();
+  if (["jobArea", "jobType", "jobModality", "jobSort"].includes(event.target.id)) renderFilteredJobs();
   if (event.target.id === "interviewType") {
     interviewDraft.jobType = event.target.value;
     interviewDraft.questionId = "";

@@ -205,6 +205,19 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
 
     click('#appNav [data-view="jobs"]');
     assert.equal(document.querySelectorAll("#jobResults .job-card").length, 4);
+    assert.match(document.querySelector("#jobResults").textContent, /R\$\s?1\.200/);
+    setValue("jobMinSalary", "1500");
+    document.querySelector("#jobMinSalary").dispatchEvent(new window.Event("input", { bubbles: true }));
+    assert.equal(document.querySelectorAll("#jobResults .job-card").length, 2);
+    setValue("jobSort", "salary");
+    change(document.querySelector("#jobSort"));
+    const salarySortedIds = [...document.querySelectorAll('#jobResults [data-action="job-details"]')].map((button) => button.dataset.id);
+    assert.deepEqual(salarySortedIds, ["job-demo-atendimento", "job-demo-ti"]);
+    setValue("jobMinSalary", "");
+    document.querySelector("#jobMinSalary").dispatchEvent(new window.Event("input", { bubbles: true }));
+    setValue("jobSort", "match");
+    change(document.querySelector("#jobSort"));
+    assert.equal(document.querySelectorAll("#jobResults .job-card").length, 4);
     setValue("jobSearch", "logística");
     document.querySelector("#jobSearch").dispatchEvent(new window.Event("input", { bubbles: true }));
     assert.equal(document.querySelectorAll("#jobResults .job-card").length, 1);
@@ -363,6 +376,12 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     statusSelect.value = "Entrevista";
     change(statusSelect);
     assert.equal(PlatformService.getCompanyApplications("company-demo")[0].status, "Entrevista");
+    assert.match(document.querySelector("#appContent .application-history").textContent, /Recebida/);
+    assert.match(document.querySelector("#appContent .application-history").textContent, /Entrevista/);
+    click('#appNav [data-view="home"]');
+    assert.match(document.querySelector("#appContent").textContent, /Funil de candidaturas/);
+    assert.match(document.querySelector("#appContent").textContent, /Entrevista: 1/);
+    click('#appNav [data-view="company-applicants"]');
     click('#appContent [data-action="view-candidate"][data-id="usr-demo-candidate"]');
     assert.match(document.querySelector("#appModalContent").textContent, /ocultos pela preferência de privacidade/);
     assert.doesNotMatch(document.querySelector("#appModalContent").textContent, /mari\.costa\+teste@skillmatch\.test|98765-4321/);
@@ -406,11 +425,25 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     setValue("jobDescription", "Anúncio fictício criado pelo teste de integração local.", modal);
     setValue("jobRequirements", "Organização\nComunicação", modal);
     setValue("jobBenefits", "Aprendizado demonstrativo", modal);
+    setValue("jobSalaryMin", "1800", modal);
+    setValue("jobSalaryMax", "2200", modal);
     submit(modal.querySelector('form[data-form="job"]'));
     await waitFor(() => PlatformService.getCompanyJobs("company-demo").some((job) => job.title.includes("qualidade")), "A empresa não conseguiu publicar o anúncio.");
     const newJob = PlatformService.getCompanyJobs("company-demo").find((job) => job.title.includes("qualidade"));
     assert.equal(newJob.approved, false);
     assert.equal(newJob.isDemo, true);
+    assert.equal(newJob.salaryMin, 1800);
+    assert.equal(newJob.salaryMax, 2200);
+
+    click(`#appContent [data-action="edit-company-job"][data-id="${newJob.id}"]`);
+    const editModal = document.querySelector("#appModalContent");
+    setValue("jobSalaryMax", "1700", editModal);
+    submit(editModal.querySelector('form[data-form="job"]'));
+    await waitFor(() => editModal.querySelector("#jobSalaryMax")?.closest(".field")?.classList.contains("invalid"), "A faixa salarial inválida não foi sinalizada.");
+    assert.equal(PlatformService.getAllJobs().find((job) => job.id === newJob.id).salaryMax, 2200);
+    setValue("jobSalaryMax", "2500", editModal);
+    submit(editModal.querySelector('form[data-form="job"]'));
+    await waitFor(() => PlatformService.getAllJobs().find((job) => job.id === newJob.id).salaryMax === 2500, "A remuneração editada não foi salva.");
   });
 
   await t.test("favoritos, treino guiado e conexões respeitam consentimento e autorização", async () => {

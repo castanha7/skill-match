@@ -29,6 +29,7 @@ test('página pública mostra oportunidades demonstrativas e busca, filtro e ace
   for (let attempt = 0; attempt < 80 && document.querySelector('#publicCatalogGrid').getAttribute('aria-busy') === 'true'; attempt++) await pause();
 
   assert.equal(document.querySelectorAll('.public-job-card').length, 4);
+  assert.match(document.querySelector('.public-job-card').textContent, /R\$\s?1\.200/);
   assert.match(document.querySelector('#catalogNotice').textContent, /Nenhuma vaga real foi pesquisada ou confirmada/);
   assert.match(document.querySelector('#publicResultCount').textContent, /4 oportunidades demonstrativas/);
 
@@ -50,6 +51,7 @@ test('página pública mostra oportunidades demonstrativas e busca, filtro e ace
 
   click('.public-job-card [data-action="details"]');
   assert.match(document.querySelector('#publicModal').textContent, /vaga não confirmada/i);
+  assert.match(document.querySelector('#publicModal').textContent, /Remuneração:/);
   click('#publicModal [data-action="apply"]');
   assert.match(document.querySelector('#publicModal').textContent, /Crie sua conta para seguir/);
   assert.ok(document.querySelector('#publicModal a[href="cadastro.html"]'));

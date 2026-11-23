@@ -73,6 +73,8 @@ const DEMO_JOBS = [
     address: "Localização demonstrativa — Curitiba, PR",
     education: "Ensino Técnico ou Superior em curso",
     description: "Exemplo de anúncio para demonstrar os filtros, os detalhes e a compatibilidade. Não é uma vaga real nem representa um processo seletivo aberto.",
+    salaryMin: 1200,
+    salaryMax: 1800,
     requirements: ["HTML e CSS", "JavaScript", "Comunicação"],
     benefits: ["Plano de aprendizagem demonstrativo", "Acompanhamento fictício"],
     applicationUrl: "",
@@ -94,6 +96,8 @@ const DEMO_JOBS = [
     address: "Localização demonstrativa — Curitiba, PR",
     education: "Ensino Médio em curso",
     description: "Anúncio fictício para testar candidaturas e filtros. Nenhuma contratação está confirmada.",
+    salaryMin: 900,
+    salaryMax: 1200,
     requirements: ["Pacote Office", "Organização", "Comunicação"],
     benefits: ["Conteúdo demonstrativo"],
     applicationUrl: "",
@@ -115,6 +119,8 @@ const DEMO_JOBS = [
     address: "Localização demonstrativa — São José dos Pinhais, PR",
     education: "Ensino Médio em curso ou concluído",
     description: "Oportunidade fictícia para testar o fluxo de candidatura. Não corresponde a uma empresa ou vaga real.",
+    salaryMin: 1600,
+    salaryMax: 2100,
     requirements: ["Comunicação", "Trabalho em equipe", "Atendimento ao cliente"],
     benefits: ["Informações demonstrativas"],
     applicationUrl: "",
@@ -136,6 +142,8 @@ const DEMO_JOBS = [
     address: "Localização demonstrativa — Araucária, PR",
     education: "Ensino Médio em curso",
     description: "Exemplo fictício para demonstrar como uma oportunidade regional apareceria no radar. Não está contratando.",
+    salaryMin: 850,
+    salaryMax: 1100,
     requirements: ["Organização", "Estoque e logística", "Pontualidade"],
     benefits: ["Informações demonstrativas"],
     applicationUrl: "",
@@ -277,8 +285,13 @@ function ensureState() {
     changed = true;
   }
   DEMO_JOBS.forEach((job) => {
-    if (!state.jobs.some((entry) => entry.id === job.id)) {
+    const existing = state.jobs.find((entry) => entry.id === job.id);
+    if (!existing) {
       state.jobs.push(clone(job));
+      changed = true;
+    } else if (!Object.hasOwn(existing, "salaryMin") && !Object.hasOwn(existing, "salaryMax")) {
+      existing.salaryMin = job.salaryMin ?? null;
+      existing.salaryMax = job.salaryMax ?? null;
       changed = true;
     }
   });
@@ -317,6 +330,18 @@ function companyOwnsJob(state, job, companyId) {
 function normalizeList(value) {
   if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
   return String(value ?? "").split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+}
+
+function normalizeSalary(value) {
+  if (value === null || value === undefined || String(value).trim() === "") return null;
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount < 0 || amount > 1_000_000) throw new Error("Informe uma remuneração mensal válida entre R$ 0 e R$ 1.000.000.");
+  return Math.round((amount + Number.EPSILON) * 100) / 100;
+}
+
+function validateSalaryRange(minimum, maximum) {
+  if ((minimum === null) !== (maximum === null)) throw new Error("Informe os dois valores da faixa salarial ou deixe ambos em branco.");
+  if (minimum !== null && maximum < minimum) throw new Error("O valor máximo deve ser igual ou maior que o mínimo.");
 }
 
 const CITY_COORDINATES = {
@@ -479,6 +504,9 @@ export const PlatformService = {
     return update((state) => {
       const company = state.companies.find((entry) => entry.id === companyId && entry.ownerId === ownerId);
       if (!company) throw new Error("Perfil empresarial não encontrado para esta conta.");
+      const salaryMin = normalizeSalary(fields.salaryMin);
+      const salaryMax = normalizeSalary(fields.salaryMax);
+      validateSalaryRange(salaryMin, salaryMax);
       const job = {
         id: id("job"),
         companyId,
@@ -491,6 +519,8 @@ export const PlatformService = {
         address: String(fields.address ?? "").trim(),
         education: String(fields.education ?? "").trim(),
         description: String(fields.description ?? "").trim(),
+        salaryMin,
+        salaryMax,
         requirements: normalizeList(fields.requirements),
         benefits: normalizeList(fields.benefits),
         applicationUrl: String(fields.applicationUrl ?? "").trim(),
@@ -513,6 +543,9 @@ export const PlatformService = {
       if (actorRole !== "admin" && (!companyOwnsJob(state, job, companyId) || state.companies.find((company) => company.id === companyId)?.ownerId !== ownerId)) {
         throw new Error("Esta conta não pode editar essa vaga.");
       }
+      const salaryMin = normalizeSalary(Object.hasOwn(fields, "salaryMin") ? fields.salaryMin : job.salaryMin);
+      const salaryMax = normalizeSalary(Object.hasOwn(fields, "salaryMax") ? fields.salaryMax : job.salaryMax);
+      validateSalaryRange(salaryMin, salaryMax);
       Object.assign(job, {
         title: String(fields.title ?? job.title).trim(),
         area: String(fields.area ?? job.area).trim(),
@@ -523,6 +556,8 @@ export const PlatformService = {
         address: String(fields.address ?? job.address).trim(),
         education: String(fields.education ?? job.education).trim(),
         description: String(fields.description ?? job.description).trim(),
+        salaryMin,
+        salaryMax,
         requirements: normalizeList(fields.requirements ?? job.requirements),
         benefits: normalizeList(fields.benefits ?? job.benefits),
         applicationUrl: String(fields.applicationUrl ?? job.applicationUrl).trim(),

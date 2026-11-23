@@ -28,4 +28,14 @@ test('migra a preferência antiga de visibilidade para privada sem descartar out
   assert.equal(PlatformService.getCandidateSettings('legacy-candidate').visibleToCompanies, false);
   assert.equal(PlatformService.getCandidateSettings('legacy-candidate').distanceMaxKm, 25);
   assert.equal(PlatformService.getCandidateSettings('legacy-candidate').radarCity, 'Araucária');
+
+  localStorage.setItem(APP_CONFIG.storageKeys.platform, JSON.stringify({
+    version: 2, companies: [], jobs: [{ id: 'job-demo-ti' }], applications: [], favorites: [],
+    connections: [], messages: [], savedTalents: [], interviewHistory: [], notifications: [],
+    preferences: {}, reports: [], ads: [],
+  }));
+  PlatformService.init();
+  const migratedJob = PlatformService.getAllJobs().find((job) => job.id === 'job-demo-ti');
+  assert.equal(migratedJob.salaryMin, 1200);
+  assert.equal(migratedJob.salaryMax, 1800);
 });
