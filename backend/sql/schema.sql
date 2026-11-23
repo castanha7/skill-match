@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS companies (
   id CHAR(36) PRIMARY KEY,
   owner_user_id CHAR(36) NOT NULL UNIQUE,
   name VARCHAR(180) NOT NULL,
+  cnpj VARCHAR(14) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
   sector VARCHAR(120) NULL,
   description TEXT NULL,
   city VARCHAR(120) NULL,
@@ -38,6 +39,7 @@ CREATE TABLE IF NOT EXISTS companies (
   website VARCHAR(2048) NULL,
   verified_at DATETIME NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_companies_cnpj (cnpj),
   CONSTRAINT fk_company_owner FOREIGN KEY (owner_user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 

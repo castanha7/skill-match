@@ -312,6 +312,11 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     setDocument(dom, "cadastro-empresa.html");
     await importPageModule("assets/js/pages/cadastro-empresa.js", "company-signup");
     setValue("companyName", "Oficina Horizonte Ltda.");
+    setValue("companyCnpj", "11.222.333/0001-80");
+    submit(document.querySelector("#companyRegisterForm"));
+    assert.equal(document.querySelector("#companyCnpj").getAttribute("aria-invalid"), "true", "CNPJ com dígito incorreto deve impedir o cadastro");
+    assert.equal(UserService.listByRole("company").some((user) => user.email === "contato.empresa@skillmatch.test"), false);
+    setValue("companyCnpj", "11.222.333/0001-81");
     setValue("companySector", "Serviços");
     setValue("companyWebsite", "https://horizonte.example");
     setValue("companyDescription", "Empresa demonstrativa de serviços para teste de cadastro.");
@@ -328,12 +333,20 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     assert.equal(AuthService.getSession()?.role, "company");
     assert.match(JSON.parse(localStorage.getItem(APP_CONFIG.storageKeys.users)).find((user) => user.id === companyUser.id).senhaHash, /^pbkdf2\$/);
     assert.equal(PlatformService.getCompany(companyUser.companyId).name, "Oficina Horizonte Ltda.");
+    assert.equal(PlatformService.getCompany(companyUser.companyId).cnpj, "11222333000181");
     assert.equal(PlatformService.getCompany(companyUser.companyId).isDemo, true);
+    assert.throws(() => PlatformService.createCompany("company-duplicate-test", "owner-duplicate-test", {
+      name: "Outra empresa de teste", cnpj: "11.222.333/0001-81", city: "Curitiba", state: "PR",
+    }), /CNPJ já está cadastrado/i);
     await assert.rejects(AuthService.login("contato.empresa@skillmatch.test", "EmpresaTeste@123", false, "candidate"), /área de empresa/i);
     setDocument(dom, "painel.html");
     await importPageModule("assets/js/pages/painel.js", "registered-company-panel");
     assert.equal(document.querySelector("#sidebarRole").textContent, "Empresa");
     assert.equal(document.querySelector("#sidebarName").textContent, "Lucas Ribeiro");
+    click('#appNav [data-view="company-profile"]');
+    assert.equal(document.querySelector("#companyCnpj").value, "11.222.333/0001-81");
+    assert.equal(document.querySelector("#companyCnpj").readOnly, true);
+    assert.match(document.querySelector("#companyCnpjHelp").textContent, /não consulta a Receita Federal/i);
     AuthService.logout();
   });
 

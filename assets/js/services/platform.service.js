@@ -1,6 +1,7 @@
 import { APP_CONFIG } from "../config/app.config.js";
 import { StorageService } from "./storage.service.js";
 import { UserService } from "./user.service.js";
+import { isValidCnpj, normalizeCnpj } from "../../../shared/cnpj.js";
 
 const DATA_KEY = APP_CONFIG.storageKeys.platform;
 const APP_STATUS = new Set(["Recebida", "Em análise", "Entrevista", "Não selecionada", "Contratada", "Desistiu"]);
@@ -350,19 +351,28 @@ export const PlatformService = {
     return company ? { ...company } : null;
   },
 
+  cnpjJaCadastrado(value) {
+    const cnpj = normalizeCnpj(value);
+    return Boolean(cnpj) && ensureState().companies.some((company) => normalizeCnpj(company.cnpj) === cnpj);
+  },
+
   createCompany(companyId, ownerId, fields) {
     return update((state) => {
       if (state.companies.some((entry) => entry.id === companyId || entry.ownerId === ownerId)) {
         throw new Error("Esta conta já possui um cadastro empresarial.");
       }
       const name = String(fields.name ?? "").trim();
+      const cnpj = normalizeCnpj(fields.cnpj);
       const city = String(fields.city ?? "").trim();
       const region = String(fields.state ?? "").trim().toUpperCase();
       if (!name || !city || !/^[A-Z]{2}$/.test(region)) throw new Error("Informe nome, cidade e UF válidos para a empresa.");
+      if (!isValidCnpj(cnpj)) throw new Error("Informe um CNPJ com dígitos verificadores válidos.");
+      if (state.companies.some((entry) => normalizeCnpj(entry.cnpj) === cnpj)) throw new Error("Este CNPJ já está cadastrado neste navegador.");
       const company = {
         id: companyId,
         ownerId,
         name,
+        cnpj,
         sector: String(fields.sector ?? "").trim(),
         description: String(fields.description ?? "").trim(),
         city,

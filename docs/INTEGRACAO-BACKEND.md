@@ -6,12 +6,14 @@ O projeto preserva o frontend e os serviços demonstrativos preexistentes. Foi a
 
 O cliente de rede público lê a meta tag `skillmatch-api-base` somente na página inicial e tenta `GET /api/jobs` quando ela contém uma URL. As operações autenticadas nas telas continuam usando demonstração local; apenas apontar a meta tag **não migra** cadastro/login, perfil, candidaturas, empresa ou administração para o banco.
 
+O cadastro empresarial do frontend exige CNPJ e verifica o formato e os dígitos verificadores (incluindo o formato alfanumérico), tanto na validação da interface quanto no serviço local. O dado fica no armazenamento demonstrativo do navegador. Essa validação matemática **não consulta a Receita Federal** e não confirma existência, situação cadastral, titularidade nem regularidade. A API também valida e aplica unicidade ao CNPJ, mas não realiza verificação oficial.
+
 ## Rotas já implementadas
 
 | Método | Rota | Acesso | Comportamento |
 |---|---|---|---|
 | `GET` | `/api/health` | Público | Verifica conectividade com MySQL sem revelar detalhes internos |
-| `POST` | `/api/auth/register` | Público, limitado | Cadastro candidato/empresa, validação Zod e hash bcrypt |
+| `POST` | `/api/auth/register` | Público, limitado | Cadastro candidato/empresa, validação Zod (incluindo dígitos verificadores e unicidade do CNPJ empresarial) e hash bcrypt |
 | `POST` | `/api/auth/login` | Público, limitado | Verificação bcrypt, estado da conta e JWT HS256 |
 | `GET` | `/api/auth/me` | JWT válido | Retorna identidade pública |
 | `GET` | `/api/jobs` | Público | Anúncios ativos `confirmed`/`unverified`; preserva status e fonte |
@@ -33,6 +35,8 @@ npm start
 ```
 
 Use Node.js 20+, MySQL 8+, HTTPS em produção, um usuário SQL restrito e cofre/variáveis do host para segredos. Não publique `.env`. Configure `FRONTEND_ORIGIN` para a origem exata do GitHub Pages/domínio (a lista pode conter origens separadas por vírgula). GitHub Pages não executa Express, MySQL, chaves ou tarefas agendadas.
+
+Para bancos já existentes criados antes do campo CNPJ, aplique uma única vez `sql/migrations/001_company_cnpj.sql` em vez de recriar o schema. Os registros empresariais antigos permanecem sem CNPJ (`NULL`) até revisão; novos cadastros pela API exigem um CNPJ válido e único. Em banco novo, `sql/schema.sql` já cria a coluna obrigatória.
 
 ## Provedor autorizado de pesquisa
 
@@ -77,4 +81,4 @@ Para completar essa migração, criar um serviço de sessão HTTPOnly/CSRF, adap
 
 ## Modelo de dados
 
-`backend/sql/schema.sql` cria `users`, `candidate_profiles`, `companies`, `jobs` e `applications` com relações, status, unicidade de candidatura e chave de deduplicação. As migrações para produção devem ser versionadas, testadas e aplicadas com backup. Dados reais de candidatos exigem controles de privacidade, acesso restrito e política LGPD revisada.
+`backend/sql/schema.sql` cria `users`, `candidate_profiles`, `companies`, `jobs` e `applications` com relações, status, unicidade de candidatura e chave de deduplicação. A tabela `companies` guarda o CNPJ normalizado (14 caracteres alfanuméricos, único); a verificação aritmética não é consulta oficial. Bancos existentes podem usar `sql/migrations/001_company_cnpj.sql`. As migrações para produção devem ser versionadas, testadas e aplicadas com backup. Dados reais de candidatos exigem controles de privacidade, acesso restrito e política LGPD revisada.

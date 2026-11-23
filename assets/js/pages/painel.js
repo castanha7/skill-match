@@ -6,6 +6,7 @@ import { AuthService } from "../services/auth.service.js";
 import { UserService } from "../services/user.service.js";
 import { PlatformService } from "../services/platform.service.js";
 import { MatchService } from "../services/match.service.js";
+import { formatCnpj } from "../../../shared/cnpj.js";
 
 const appNav = $("#appNav");
 const appContent = $("#appContent");
@@ -580,9 +581,11 @@ function renderCompanyHome() {
 
 function renderCompanyProfilePage() {
   const company = currentCompany || {};
-  return `<section class="panel-card" style="margin-bottom:1rem"><h2>Perfil da conta de empresa</h2><p class="panel-card-subtitle">O registro vem da conta demo; no produto real seriam necessários validação de identidade empresarial, permissões e armazenamento no servidor.</p></section>
+  const formattedCnpj = company.cnpj ? formatCnpj(company.cnpj) : "";
+  return `<section class="panel-card" style="margin-bottom:1rem"><h2>Perfil da conta de empresa</h2><p class="panel-card-subtitle">O perfil permanece demonstrativo e salvo neste navegador. A validação do CNPJ confere apenas os dígitos verificadores; não confirma existência, situação cadastral ou titularidade.</p></section>
     <form class="form-panel" data-form="company-profile" novalidate>
       <div class="form-row"><div class="field"><label for="companyName">Nome da empresa</label><input class="input" id="companyName" value="${escapeHtml(company.name)}" /><p class="error-msg">Informe o nome da empresa.</p></div><div class="field"><label for="companySector">Setor</label><select class="input" id="companySector">${optionList(CATALOGS.areasInteresse, company.sector || "", "Selecione o setor")}</select><p class="error-msg">Selecione o setor.</p></div></div>
+      <div class="field"><label for="companyCnpj">CNPJ</label><input class="input" id="companyCnpj" value="${escapeHtml(formattedCnpj)}" placeholder="Não informado" readonly aria-describedby="companyCnpjHelp" /><p class="form-help" id="companyCnpjHelp">${formattedCnpj ? "Informado no cadastro. A validação matemática não consulta a Receita Federal nem confirma existência ou situação cadastral." : "Este perfil demonstrativo anterior não tem CNPJ informado."}</p></div>
       <div class="field"><label for="companyDescription">Descrição</label><textarea class="input" id="companyDescription" maxlength="1200" rows="4">${escapeHtml(company.description)}</textarea><p class="error-msg">Informe uma breve descrição.</p></div>
       <div class="form-row-3"><div class="field"><label for="companyCity">Cidade</label><input class="input" id="companyCity" value="${escapeHtml(company.city)}" /><p class="error-msg">Informe a cidade.</p></div><div class="field"><label for="companyState">UF</label><select class="input" id="companyState">${optionList(CATALOGS.estados, company.state || "", "UF")}</select><p class="error-msg">Selecione a UF.</p></div></div>
       <div class="form-row"><div class="field"><label for="companyAddress">Endereço ou região</label><input class="input" id="companyAddress" value="${escapeHtml(company.address)}" /><p class="error-msg">Informe uma região ou endereço.</p></div><div class="field"><label for="companyPhone">Telefone</label><input class="input" id="companyPhone" value="${escapeHtml(company.phone)}" placeholder="(00) 00000-0000" /></div></div>

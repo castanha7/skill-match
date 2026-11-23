@@ -3,6 +3,7 @@ import { StorageService } from "./storage.service.js";
 import ApiService from "./api.service.js";
 import { UserService } from "./user.service.js";
 import { PlatformService } from "./platform.service.js";
+import { isValidCnpj, normalizeCnpj } from "../../../shared/cnpj.js";
 
 const { users: USERS_KEY, session: SESSION_KEY, seeded: SEEDED_KEY, passwordReset: RESET_KEY } = APP_CONFIG.storageKeys;
 const PBKDF2_ITERATIONS = 180_000;
@@ -223,6 +224,8 @@ export const AuthService = {
   },
 
   async registerCompany(dados) {
+    const cnpj = normalizeCnpj(dados.cnpj);
+    if (!isValidCnpj(cnpj)) throw new Error("Informe um CNPJ com dígitos verificadores válidos.");
     const email = String(dados.email ?? "").trim().toLowerCase();
     if (this.emailJaCadastrado(email)) throw new Error("Este e-mail já está cadastrado. Tente fazer login.");
     const companyId = makeId("company");
@@ -243,6 +246,7 @@ export const AuthService = {
     try {
       PlatformService.createCompany(companyId, user.id, {
         name: dados.companyName,
+        cnpj,
         sector: dados.sector,
         description: dados.description,
         city: dados.city,

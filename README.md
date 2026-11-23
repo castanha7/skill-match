@@ -19,7 +19,7 @@ Candidato, empresa e administração mantêm os fluxos de cadastro/login/painel 
 - **Painel do candidato**: início, vagas, Radar, candidaturas locais, currículo imprimível/exportável pela impressão do navegador, perfil, cursos/planejamento, notificações e configurações.
 - **Radar local**: endereço de referência, cidade/UF, bairro/região, raio, tipo, área e modalidade são filtros persistidos neste navegador. O endereço é analisado localmente e reconhece sete centros urbanos do Paraná; o raio usa distância aproximada em linha reta entre centros, não o ponto exato da rua nem rota. Endereço não reconhecido deixa o raio sem aplicação, com aviso visível. Nenhum geocodificador externo ou mapa está conectado.
 - **Compatibilidade demonstrativa**: serviço local explica correspondência de habilidades, área, tipo, localização e escolaridade (incluindo nível e “em curso/concluído”). Sugestões podem variar diariamente e excluem oportunidades com interesse já registrado; o percentual não é IA nem chance de contratação.
-- **Empresa demonstrativa**: página de cadastro empresarial (`cadastro-empresa.html`), login, perfil, publicação/edição/pausa de vagas, consulta de candidaturas e alteração de status. **Admin demonstrativo**: moderação, cadastros e relatos locais. Esses dados ficam no navegador e não são compartilhados; nenhuma vaga da conta de teste é divulgada como contratação real.
+- **Empresa demonstrativa**: cadastro empresarial (`cadastro-empresa.html`) com validação dos dígitos verificadores do CNPJ (inclui formato alfanumérico), login, perfil, publicação/edição/pausa de vagas, consulta de candidaturas e alteração de status. CNPJ é armazenado localmente no modo demo; validar seus dígitos não confirma existência, situação cadastral nem titularidade. **Admin demonstrativo**: moderação, cadastros e relatos locais. Esses dados ficam no navegador e não são compartilhados; nenhuma vaga da conta de teste é divulgada como contratação real.
 - **API inicial (`backend/`)**: autenticação com bcrypt/JWT no servidor, validação, CORS, rate limit, consultas parametrizadas, API pública de vagas, candidatura autenticada, provedor de busca estruturado autorizado e agendamento opcional. Ela **não foi conectada às telas autenticadas do frontend**, nem testada com MySQL ou credenciais externas nesta sessão.
 
 ## Executar o frontend estático
@@ -55,11 +55,11 @@ mysql -u root -p < sql/schema.sql
 npm start
 ```
 
-A API escuta em `0.0.0.0:3000`. Verifique `GET /api/health`; serviços MySQL precisam estar disponíveis. Configure usuário MySQL com privilégios mínimos, HTTPS e segredos no gerenciador de variáveis do provedor de hospedagem — não publique `.env`.
+Se o banco já existia antes da coluna CNPJ, aplique uma vez `sql/migrations/001_company_cnpj.sql` (no diretório `backend/`) em vez de recriar o schema. A API escuta em `0.0.0.0:3000`. Verifique `GET /api/health`; serviços MySQL precisam estar disponíveis. Configure usuário MySQL com privilégios mínimos, HTTPS e segredos no gerenciador de variáveis do provedor de hospedagem — não publique `.env`.
 
 Rotas atualmente implementadas:
 
-- `POST /api/auth/register` e `/api/auth/login`; candidato ou empresa. Senhas são armazenadas com bcrypt e sessões retornam JWT curto.
+- `POST /api/auth/register` e `/api/auth/login`; candidato ou empresa. Cadastro empresarial valida e exige CNPJ único (somente dígitos verificadores; sem consulta à Receita Federal). Senhas são armazenadas com bcrypt e sessões retornam JWT curto.
 - `GET /api/auth/me` autenticada.
 - `GET /api/jobs` para oportunidades ativas elegíveis, com status e origem.
 - `POST /api/jobs/discovery/search` para candidato autenticado, usando somente o provedor autorizado configurado.
@@ -93,7 +93,7 @@ npm ci
 npm test
 ```
 
-Os testes automatizados cobrem cadastro/login/recuperação, fluxos de perfil, painel, vagas, Radar, empresas/admin e navegação, além de busca/filtro/modal da página pública, compatibilidade de habilidades/escolaridade, variação de recomendações e distâncias do Radar. São testes Node/JSDOM, não equivalem a teste visual em navegadores/dispositivos nem validam serviço MySQL real. Nesta sessão: **23 testes passaram**. A sintaxe dos módulos do backend foi verificada e `npm audit` do backend não reportou vulnerabilidades após atualizar as dependências.
+Os testes automatizados cobrem cadastro/login/recuperação, validação de CNPJ (incluindo dígitos inválidos), fluxos de perfil, painel, vagas, Radar, empresas/admin e navegação, além de busca/filtro/modal da página pública, compatibilidade de habilidades/escolaridade, variação de recomendações e distâncias do Radar. São testes Node/JSDOM, não equivalem a teste visual em navegadores/dispositivos nem validam serviço MySQL real. Nesta sessão: **24 testes passaram**. A sintaxe dos módulos do backend foi verificada e `npm audit` do backend não reportou vulnerabilidades após atualizar as dependências.
 
 ## Estrutura
 

@@ -2,12 +2,14 @@ import { $, showToast, setFieldError, clearFieldError, bindAutoClear } from "../
 import { Validators } from "../utils/validators.js";
 import { CATALOGS } from "../config/app.config.js";
 import { AuthService } from "../services/auth.service.js";
+import { PlatformService } from "../services/platform.service.js";
+import { normalizeCnpj } from "../../../shared/cnpj.js";
 
 const form = $("#companyRegisterForm");
 const alertBox = $("#companyRegisterAlert");
 const alertText = $("#companyRegisterAlertText");
 const button = $("#companyRegisterButton");
-const fields = ["companyName", "companySector", "companyWebsite", "companyDescription", "companyCity", "companyState", "contactName", "companyEmail", "companyPassword", "companyPasswordConfirm"];
+const fields = ["companyName", "companyCnpj", "companySector", "companyWebsite", "companyDescription", "companyCity", "companyState", "contactName", "companyEmail", "companyPassword", "companyPasswordConfirm"];
 fields.forEach((id) => bindAutoClear($("#" + id)));
 for (const state of CATALOGS.estados) {
   const option = document.createElement("option");
@@ -28,6 +30,7 @@ function validWebUrl(value) {
 function validate() {
   const rules = [
     ["companyName", Validators.required($("#companyName").value), "Informe o nome da empresa."],
+    ["companyCnpj", Validators.cnpj($("#companyCnpj").value), "Informe um CNPJ com dígitos verificadores válidos."],
     ["companySector", Validators.required($("#companySector").value), "Selecione uma área."],
     ["companyWebsite", validWebUrl($("#companyWebsite").value), "Informe um endereço http(s) válido."],
     ["companyDescription", $("#companyDescription").value.trim().length >= 20, "Escreva pelo menos 20 caracteres."],
@@ -57,6 +60,11 @@ form.addEventListener("submit", async (event) => {
     form.querySelector('[aria-invalid="true"]')?.focus();
     return;
   }
+  if (PlatformService.cnpjJaCadastrado($("#companyCnpj").value)) {
+    setFieldError($("#companyCnpj"), "Este CNPJ já está cadastrado neste navegador.");
+    $("#companyCnpj").focus();
+    return;
+  }
   if (AuthService.emailJaCadastrado($("#companyEmail").value)) {
     setFieldError($("#companyEmail"), "Este e-mail já está cadastrado. Tente fazer login.");
     $("#companyEmail").focus();
@@ -71,6 +79,7 @@ form.addEventListener("submit", async (event) => {
       senha: $("#companyPassword").value,
       confirmarSenha: $("#companyPasswordConfirm").value,
       companyName: $("#companyName").value.trim(),
+      cnpj: normalizeCnpj($("#companyCnpj").value),
       sector: $("#companySector").value,
       description: $("#companyDescription").value.trim(),
       city: $("#companyCity").value.trim(),

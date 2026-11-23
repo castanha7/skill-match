@@ -1,6 +1,7 @@
+import { isValidCnpj } from "../../../shared/cnpj.js";
+
 /**
- * Validators — Regras de validação reutilizáveis dos formulários
- * (as mesmas regras serão replicadas no backend com express-validator)
+ * Validators — Regras de validação reutilizáveis dos formulários.
  */
 export const Validators = {
   required: (value) => String(value ?? "").trim().length > 0,
@@ -11,6 +12,9 @@ export const Validators = {
   },
 
   email: (value) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(value ?? "").trim()),
+
+  /** CNPJ com dígitos verificadores válidos; não confirma existência cadastral. */
+  cnpj: (value) => isValidCnpj(value),
 
   /** Senha: mínimo 8 caracteres, com letras e números */
   password: (value) => /^(?=.*[A-Za-z])(?=.*\d).{8,}$/.test(String(value ?? "")),
