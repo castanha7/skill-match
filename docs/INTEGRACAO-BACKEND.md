@@ -2,7 +2,7 @@
 
 ## Estado desta implementação
 
-O projeto preserva o frontend e os serviços demonstrativos preexistentes. Foi acrescentado `backend/`, uma API Express/MySQL separada. O backend não foi inicializado contra um banco real nesta sessão, porque não há serviço/credenciais MySQL nem provedor externo configurados. Os testes do frontend não são testes de integração da API.
+O projeto preserva o frontend e os serviços demonstrativos preexistentes. Foi acrescentado `backend/`, uma API Express/MySQL separada. O backend não foi inicializado contra um banco real nesta sessão, porque não há serviço/credenciais MySQL nem provedor externo configurados. Há testes unitários com provedor de IA simulado, mas não testes de integração HTTP/MySQL.
 
 O cliente de rede público lê a meta tag `skillmatch-api-base` somente na página inicial e tenta `GET /api/jobs` quando ela contém uma URL. As operações autenticadas nas telas continuam usando demonstração local; apenas apontar a meta tag **não migra** cadastro/login, perfil, candidaturas, empresa ou administração para o banco.
 
@@ -13,15 +13,23 @@ O cadastro empresarial do frontend exige CNPJ e verifica o formato e os dígitos
 | Método | Rota | Acesso | Comportamento |
 |---|---|---|---|
 | `GET` | `/api/health` | Público | Verifica conectividade com MySQL sem revelar detalhes internos |
-| `POST` | `/api/auth/register` | Público, limitado | Cadastro candidato/empresa, validação Zod (incluindo dígitos verificadores e unicidade do CNPJ empresarial) e hash bcrypt |
-| `POST` | `/api/auth/login` | Público, limitado | Verificação bcrypt, estado da conta e JWT HS256 |
-| `GET` | `/api/auth/me` | JWT válido | Retorna identidade pública |
+| `POST` | `/api/auth/register`, `/api/auth/login` | Público, limitado | Cadastro/login, CNPJ único e matematicamente válido para empresa, hash bcrypt e JWT HS256 |
+| `GET` | `/api/auth/me` | JWT ativo | Retorna identidade pública; middleware confere no banco o status e o papel atual em cada chamada autenticada |
+| `GET`, `PATCH` | `/api/auth/profile` | Candidato autenticado | Lê/atualiza o perfil profissional e preferência de visibilidade, privada por padrão |
 | `GET` | `/api/jobs` | Público | Anúncios ativos `confirmed`/`unverified`; preserva status e fonte |
-| `POST` | `/api/jobs/discovery/search` | Candidato autenticado | Executa busca apenas pelo provedor configurado e persiste os resultados |
-| `POST` | `/api/jobs/:jobId/applications` | Candidato autenticado | Registra interesse uma única vez e somente para anúncio ativo |
-| `GET` | `/api/jobs/applications/mine` | Candidato autenticado | Lista as candidaturas do próprio usuário |
+| `GET` | `/api/companies` | Público | Diretório de empresas ativas cuja revisão está registrada (`verified_at`) |
+| `GET` | `/api/companies/mine` | Empresa autenticada | Lê o próprio perfil empresarial |
+| `POST` | `/api/jobs/discovery/search` | Candidato autenticado | Executa busca somente pelo provedor configurado e persiste resultados |
+| `POST`, `GET` | `/api/jobs/:jobId/applications`, `/api/jobs/applications/mine` | Candidato autenticado | Registra interesse uma vez em anúncio ativo e lista as candidaturas próprias |
+| `GET`, `POST` | `/api/connections` | Candidato ou empresa | Lista conexões próprias; candidato pode iniciar uma conversa e empresa verificada pode enviar convite a candidato visível |
+| `PATCH` | `/api/connections/:connectionId` | Participante autenticado | Aceita/recusa convite pendente ou bloqueia a conexão |
+| `GET`, `POST` | `/api/connections/:connectionId/messages` | Participante autenticado | Lê histórico e envia mensagens apenas após conexão aceita |
+| `GET` | `/api/talents`, `/api/talents/saved`, `/api/talents/:candidateId` | Empresa verificada | Busca perfis com opt-in, vê lista salva e consulta perfil autorizado; contato não é exposto sem consentimento e conexão/candidatura |
+| `POST`, `DELETE` | `/api/talents/:candidateId/saved` | Empresa verificada | Salva/remove perfil visível da lista empresarial |
+| `GET`, `POST`, `PATCH` | `/api/notifications`, `/api/notifications/read-all`, `/api/notifications/:id/read` | Conta autenticada | Lista, marca todas ou marca uma notificação própria como lida |
+| `GET`, `POST` | `/api/interviews/mine`, `/api/interviews/feedback` | Candidato autenticado | Histórico próprio; análise opcional através de IA externa, com consentimento explícito, validação do retorno e rate limit |
 
-A API inicial ainda não implementa gestão empresarial completa de anúncios e candidaturas, operações administrativas, autenticação por cookie, verificação de e-mail, reset por e-mail, rotas completas de perfil/currículo, notificações, Google Maps, IA, auditoria ou processo de denúncias. As ações equivalentes existentes no painel frontend continuam locais e demonstrativas.
+A API ainda não implementa gestão empresarial completa de anúncios e candidaturas, provisionamento operacional/verificação de empresas, operações administrativas, notificações automáticas para todos os eventos, autenticação por cookie, verificação/reset por e-mail, auditoria, recuperação/exclusão de conta ou processo persistente de denúncias. Empresas só conseguem usar rotas de talentos/conexões se `verified_at` já tiver sido preenchido por um processo administrativo que ainda não existe. As ações equivalentes do painel frontend continuam locais e demonstrativas.
 
 ## Inicialização e configuração
 
@@ -36,7 +44,7 @@ npm start
 
 Use Node.js 20+, MySQL 8+, HTTPS em produção, um usuário SQL restrito e cofre/variáveis do host para segredos. Não publique `.env`. Configure `FRONTEND_ORIGIN` para a origem exata do GitHub Pages/domínio (a lista pode conter origens separadas por vírgula). GitHub Pages não executa Express, MySQL, chaves ou tarefas agendadas.
 
-Para bancos já existentes criados antes do campo CNPJ, aplique uma única vez `sql/migrations/001_company_cnpj.sql` em vez de recriar o schema. Os registros empresariais antigos permanecem sem CNPJ (`NULL`) até revisão; novos cadastros pela API exigem um CNPJ válido e único. Em banco novo, `sql/schema.sql` já cria a coluna obrigatória.
+Para banco anterior à coluna CNPJ, aplique uma única vez `sql/migrations/001_company_cnpj.sql` e depois `sql/migrations/002_connections_interviews.sql`. Se CNPJ já foi migrado, aplique somente a 002. Não reaplique migrações nem recrie o schema sobre dados existentes. A migração 002 define a visibilidade como privada, revoga consentimentos implícitos do esquema anterior (perfis precisam de novo opt-in), registra o horário do consentimento e cria tabelas de favoritos, talentos salvos, conexões, mensagens, notificações e sessões de entrevista. Registros empresariais antigos permanecem sem CNPJ (`NULL`) até revisão; novos cadastros pela API exigem um CNPJ válido e único. Em banco novo, `sql/schema.sql` contém a estrutura atual. Faça backup e valide as migrações em ambiente de teste antes de produção.
 
 ## Provedor autorizado de pesquisa
 
@@ -68,6 +76,16 @@ O frontend faz `GET /api/jobs`. O backend deve responder `{"jobs": [...]}`. CORS
 
 Para completar essa migração, criar um serviço de sessão HTTPOnly/CSRF, adaptar `AuthService`, `UserService` e `PlatformService`, substituir cada operação local por endpoints, definir tratamento offline e testes de contrato, e impedir que dados locais de demonstração se confundam com contas reais. Não copie as credenciais públicas de demonstração para o banco.
 
+## Testes disponíveis
+
+```bash
+cd backend
+npm ci
+npm test
+```
+
+Há cinco testes unitários que verificam consentimento explícito e o serviço `interview-ai` com provedor simulado: não configurado, resposta válida, conteúdo malformado e HTTPS obrigatório em produção. Os testes não sobem o servidor HTTP nem conectam MySQL. Na raiz do repositório, `npm test` cobre os fluxos demonstrativos de navegador. Ambos não substituem testes de integração com banco, segurança e navegadores reais.
+
 ## Segurança e implantação ainda necessárias
 
 - Configure sessão por cookie `HttpOnly`, `Secure`, `SameSite` e proteção CSRF, ou trate o JWT atual apenas como scaffold (o token em armazenamento acessível ao JS é vulnerável a XSS).
@@ -76,9 +94,9 @@ Para completar essa migração, criar um serviço de sessão HTTPOnly/CSRF, adap
 - Implementar propriedade do recurso para todas as rotas futuras, paginação, limites, proteção de arquivos/currículos e política de retenção/exclusão.
 - Configurar serviço de busca autorizado, teste de disponibilidade, observabilidade e limite de custo. A chave nunca vai ao frontend.
 - Google Maps/alternativa: geocodificação precisa e distância/rota devem ser solicitadas pelo backend, com chaves restritas, consentimento, cache e cota. O Radar demonstrativo aceita endereço de referência sem enviá-lo a terceiros, mas só reconhece sete cidades do Paraná e estima a distância em linha reta entre centros urbanos; não calcula rua, CEP ou rota. Endereço não reconhecido não aplica o raio, e a interface avisa isso.
-- IA: não conectada. Um serviço futuro deve explicar sinais e lacunas, evitar inferir atributos sensíveis, permitir revisão e nunca apresentar percentual como chance de contratação. A compatibilidade do protótipo é regra determinística local.
+- IA: `/api/interviews/feedback` é uma rota opcional de backend, ainda sem credenciais nem integração no painel. Exige `consentToExternalProcessing: true`, envia pergunta/resposta/habilidades ao endpoint configurado (`AI_PROVIDER_URL`, `AI_PROVIDER_TOKEN`, `AI_PROVIDER_MODEL`) e grava resposta/feedback e horário de consentimento. Sem configuração retorna `503`; rejeita HTTPS ausente em produção e valida o JSON do provedor. Testes usam um `fetch` simulado, não um provedor real. Antes de ativar, avaliar retenção, contrato, transferência internacional e política de dados do fornecedor. O treino atual do painel é exclusivamente local e determinístico; a compatibilidade também é regra local.
 - Criar testes de integração com MySQL/API simulada e testes de autorização (candidato não lê outro currículo, empresa não altera vaga alheia, admin isolado) antes da publicação.
 
 ## Modelo de dados
 
-`backend/sql/schema.sql` cria `users`, `candidate_profiles`, `companies`, `jobs` e `applications` com relações, status, unicidade de candidatura e chave de deduplicação. A tabela `companies` guarda o CNPJ normalizado (14 caracteres alfanuméricos, único); a verificação aritmética não é consulta oficial. Bancos existentes podem usar `sql/migrations/001_company_cnpj.sql`. As migrações para produção devem ser versionadas, testadas e aplicadas com backup. Dados reais de candidatos exigem controles de privacidade, acesso restrito e política LGPD revisada.
+`backend/sql/schema.sql` cria `users`, `candidate_profiles`, `companies`, `jobs`, `applications`, `candidate_favorites`, `company_saved_talents`, `connections`, `connection_messages`, `notifications` e `interview_sessions` com relações e restrições. Perfis ficam invisíveis por padrão; sessões de entrevista guardam resposta, feedback, provedor e horário de consentimento para processamento externo. `companies` guarda CNPJ normalizado (14 caracteres alfanuméricos, único); a validação aritmética não é consulta oficial. Bancos existentes usam as migrações 001 e 002, uma única vez e com backup. Dados reais de candidatos exigem controles de privacidade, acesso restrito e política LGPD revisada.

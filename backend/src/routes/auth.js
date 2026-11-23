@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { getPool } from '../services/db.js';
-import { authenticate } from '../middleware/auth.js';
+import { authenticate, allowRoles } from '../middleware/auth.js';
 import { isValidCnpj, normalizeCnpj } from '../../../shared/cnpj.js';
 
 const router = Router();
@@ -14,10 +14,25 @@ const registerSchema = z.object({
   name: z.string().trim().min(2).max(160),
   email: z.string().trim().email().max(254),
   password: z.string().min(10).max(128).regex(/[A-Za-z]/).regex(/[0-9]/),
-  profile: z.object({ city: z.string().max(120).optional(), state: z.string().length(2).optional(), education: z.string().max(160).optional(), interests: z.array(z.string().max(100)).max(30).optional(), skills: z.array(z.string().max(100)).max(60).optional(), availability: z.string().max(120).optional() }).optional(),
+  profile: z.object({ city: z.string().max(120).optional(), state: z.string().length(2).optional(), education: z.string().max(160).optional(), interests: z.array(z.string().max(100)).max(30).optional(), skills: z.array(z.string().max(100)).max(60).optional(), courses: z.array(z.string().max(160)).max(50).optional(), experience: z.array(z.string().max(1600)).max(50).optional(), availability: z.string().max(120).optional(), visibility: z.boolean().optional() }).optional(),
   company: z.object({ name: z.string().trim().min(2).max(180), cnpj: cnpjSchema, sector: z.string().max(120).optional(), city: z.string().max(120).optional(), state: z.string().length(2).optional(), website: z.string().url().max(2048).optional().or(z.literal('')) }).optional(),
 });
 const loginSchema = z.object({ email: z.string().trim().email().max(254), password: z.string().min(1).max(128), role: z.enum(['candidate', 'company', 'admin']).optional() });
+const profileSchema = z.object({
+  city: z.string().trim().max(120).nullable().optional(),
+  state: z.string().trim().length(2).regex(/^[A-Za-z]{2}$/).nullable().optional(),
+  education: z.string().trim().max(160).nullable().optional(),
+  interests: z.array(z.string().trim().min(1).max(100)).max(30).optional(),
+  skills: z.array(z.string().trim().min(1).max(100)).max(60).optional(),
+  courses: z.array(z.string().trim().min(1).max(160)).max(50).optional(),
+  experience: z.array(z.string().trim().min(1).max(1600)).max(50).optional(),
+  availability: z.string().trim().max(120).nullable().optional(),
+  visibility: z.boolean().optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, 'Informe ao menos um campo para atualizar.');
+const profileColumns = {
+  city: 'city', state: 'state', education: 'education', interests: 'interests', skills: 'skills',
+  courses: 'courses', experience: 'experience', availability: 'availability', visibility: 'visibility',
+};
 function publicUser(row) { return { id: row.id, name: row.name, email: row.email, role: row.role, ...(row.company_id || row.companyId ? { companyId: row.company_id || row.companyId } : {}) }; }
 function sign(row) { return jwt.sign({ sub: row.id, role: row.role }, process.env.JWT_SECRET, { algorithm: 'HS256', expiresIn: process.env.JWT_EXPIRES_IN || '2h' }); }
 
@@ -44,7 +59,7 @@ router.post('/register', async (req, res, next) => {
     await connection.execute('INSERT INTO users (id,name,email,password_hash,role) VALUES (?,?,?,?,?)', [id, input.name, input.email.toLowerCase(), passwordHash, input.role]);
     if (input.role === 'candidate') {
       const profile = input.profile || {};
-      await connection.execute('INSERT INTO candidate_profiles (user_id,city,state,education,interests,skills,availability) VALUES (?,?,?,?,?,?,?)', [id, profile.city || null, profile.state?.toUpperCase() || null, profile.education || null, JSON.stringify(profile.interests || []), JSON.stringify(profile.skills || []), profile.availability || null]);
+      await connection.execute('INSERT INTO candidate_profiles (user_id,city,state,education,interests,skills,courses,experience,availability,visibility,visibility_consented_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)', [id, profile.city || null, profile.state?.toUpperCase() || null, profile.education || null, JSON.stringify(profile.interests || []), JSON.stringify(profile.skills || []), JSON.stringify(profile.courses || []), JSON.stringify(profile.experience || []), profile.availability || null, profile.visibility === true, profile.visibility === true ? new Date() : null]);
     } else {
       const company = input.company;
       await connection.execute('INSERT INTO companies (id,owner_user_id,name,cnpj,sector,city,state,website) VALUES (?,?,?,?,?,?,?,?)', [companyId, id, company.name, companyCnpj, company.sector || null, company.city || null, company.state?.toUpperCase() || null, company.website || null]);
@@ -82,6 +97,44 @@ router.get('/me', authenticate, async (req, res, next) => {
       FROM users u LEFT JOIN companies c ON c.owner_user_id=u.id WHERE u.id=? LIMIT 1`, [req.user.sub]);
     if (!rows[0] || rows[0].status !== 'active') return res.status(401).json({ message: 'Conta indisponível.' });
     res.json({ user: publicUser(rows[0]) });
+  } catch (error) { next(error); }
+});
+
+router.get('/profile', authenticate, allowRoles('candidate'), async (req, res, next) => {
+  try {
+    const [rows] = await getPool().execute(`SELECT city,state,education,interests,skills,courses,experience,availability,visibility,
+        visibility_consented_at AS visibilityConsentedAt
+      FROM candidate_profiles WHERE user_id=? LIMIT 1`, [req.user.sub]);
+    if (!rows[0]) return res.status(404).json({ message: 'Perfil profissional não encontrado.' });
+    res.json({ profile: rows[0] });
+  } catch (error) { next(error); }
+});
+
+router.patch('/profile', authenticate, allowRoles('candidate'), async (req, res, next) => {
+  const parsed = profileSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ message: 'Confira os campos enviados.', errors: parsed.error.flatten().fieldErrors });
+  const assignments = [];
+  const values = [];
+  for (const [field, value] of Object.entries(parsed.data)) {
+    assignments.push(`\`${profileColumns[field]}\`=?`);
+    if (['interests', 'skills', 'courses', 'experience'].includes(field)) values.push(JSON.stringify(value));
+    else if (field === 'state') values.push(value?.toUpperCase() || null);
+    else if (typeof value === 'string') values.push(value || null);
+    else values.push(value);
+    if (field === 'visibility') {
+      assignments.push('visibility_consented_at=?');
+      values.push(value ? new Date() : null);
+    }
+  }
+  try {
+    const pool = getPool();
+    const [existing] = await pool.execute('SELECT user_id FROM candidate_profiles WHERE user_id=? LIMIT 1', [req.user.sub]);
+    if (!existing.length) return res.status(404).json({ message: 'Perfil profissional não encontrado.' });
+    await pool.execute(`UPDATE candidate_profiles SET ${assignments.join(',')} WHERE user_id=?`, [...values, req.user.sub]);
+    const [rows] = await pool.execute(`SELECT city,state,education,interests,skills,courses,experience,availability,visibility,
+        visibility_consented_at AS visibilityConsentedAt
+      FROM candidate_profiles WHERE user_id=? LIMIT 1`, [req.user.sub]);
+    res.json({ profile: rows[0] });
   } catch (error) { next(error); }
 });
 export default router;

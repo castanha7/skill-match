@@ -16,18 +16,18 @@
     <article class="legal-card">
       <p class="legal-updated">Aviso demonstrativo · não é um documento jurídico de conformidade com a LGPD</p>
       <h1>Política de Privacidade do SkillMatch</h1>
-      <p>Este protótipo acadêmico não possui backend. As informações que você digitar são guardadas no armazenamento local do navegador em uso e podem ser consultadas ou removidas por quem tiver acesso ao dispositivo e ao navegador.</p>
+      <p>A versão estática do frontend não está conectada ao backend MySQL. Os fluxos de demonstração guardam dados no armazenamento local do navegador em uso e podem ser consultados ou removidos por quem tiver acesso ao dispositivo e ao navegador.</p>
       <p class="legal-warning"><strong>Não informe dados sensíveis ou credenciais reais.</strong> O armazenamento local pode ser inspecionado e editado; ele não deve ser considerado um cofre, uma conta segura ou um banco de dados privado.</p>
       <h2>1. Dados usados na demonstração</h2>
       <p>O protótipo pode guardar localmente nome, e-mail, telefone, cidade, formação, habilidades, preferências, candidaturas de teste e uma foto opcional. Senhas de contas criadas no protótipo são derivadas localmente com PBKDF2 antes de serem armazenadas, mas isso não torna a autenticação segura: o código, as contas demo e o armazenamento ficam no navegador público.</p>
       <h2>2. Para que os dados são usados</h2>
       <p>Os dados permitem demonstrar edição de perfil, estimativas ilustrativas de compatibilidade, filtros de oportunidade, geração de currículo, atualização de status e navegação entre áreas. Nenhum dado é enviado a empresas reais por esta versão estática.</p>
       <h2>3. Vagas, mapa e comunicações</h2>
-      <p>Empresas e anúncios marcados como demonstrativos não são confirmados. A localização utiliza, quando disponível, uma estimativa entre centros urbanos codificados no projeto; não há GPS nem Google Maps. Notificações e recuperação de senha são locais: a recuperação mostra um código de teste e não envia e-mail.</p>
+      <p>Empresas e anúncios marcados como demonstrativos não são confirmados. A localização utiliza, quando disponível, uma estimativa entre centros urbanos codificados no projeto; não há GPS nem Google Maps. Favoritos, conexões, mensagens, denúncias, notificações e recuperação de senha são locais; a recuperação mostra um código de teste e não envia e-mail. O ditado opcional depende do recurso de reconhecimento de fala do navegador e pode ser processado pelo fornecedor desse navegador segundo as próprias políticas — revise o texto transcrito antes de enviar.</p>
       <h2>4. Controle e remoção</h2>
-      <p>Você pode editar o perfil e apagar a conta pela interface. Também pode limpar os dados do site nas configurações do navegador. A remoção local não apaga capturas de tela, impressões ou cópias externas criadas por quem acessou o dispositivo.</p>
+      <p>Na demonstração, a conta candidata pode ser excluída nas configurações do painel; os registros locais associados àquela conta são removidos deste navegador e a sessão é encerrada. A exclusão não apaga capturas de tela, impressões ou cópias externas. A API de produção ainda não tem rota de exclusão, e a versão estática não envia solicitações de exclusão a um servidor.</p>
       <h2>5. Integrações futuras</h2>
-      <p>Backend, banco MySQL, Google Maps Platform, inteligência artificial, serviço de e-mail ou fornecedores de cursos não estão conectados nesta versão. Uma implantação real exigirá mapeamento de dados, controles de acesso, finalidade e retenção, segurança, atendimento aos direitos dos titulares e revisão jurídica apropriada.</p>
+      <p>Existe um backend Express/MySQL separado, ainda sem implantação ou conexão com as telas autenticadas. As rotas de mapa, e-mail e cursos não estão conectadas. O backend inclui uma rota opcional de feedback por IA, mas não há provedor ou credenciais configurados e o painel atual usa somente revisão local por regras. Se essa rota for habilitada, ela exige consentimento explícito e envia a pergunta, a resposta e as habilidades ao provedor configurado, além de armazenar a resposta e o feedback no banco. Não a ative sem revisar finalidade, retenção, transferência de dados, contrato do fornecedor e direitos do titular.</p>
       <p class="legal-updated">Última atualização do texto demonstrativo: 14 de novembro de 2026.</p>
     </article>
   </main>

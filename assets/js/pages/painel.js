@@ -6,6 +6,7 @@ import { AuthService } from "../services/auth.service.js";
 import { UserService } from "../services/user.service.js";
 import { PlatformService } from "../services/platform.service.js";
 import { MatchService } from "../services/match.service.js";
+import { InterviewPracticeService } from "../services/interview-practice.service.js";
 import { formatCnpj } from "../../../shared/cnpj.js";
 
 const appNav = $("#appNav");
@@ -23,6 +24,8 @@ let currentUser = null;
 let currentCompany = null;
 let currentView = "home";
 let pendingModalAction = null;
+let interviewDraft = { jobType: "Primeiro Emprego", experienceLevel: "Primeira oportunidade", targetRole: "", questionId: "", answer: "" };
+let interviewReviewId = null;
 
 const ICONS = {
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-6v-7h-4v7H4a1 1 0 0 1-1-1z"/></svg>',
@@ -44,6 +47,7 @@ const ICONS = {
   calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
   sparkles: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>',
   check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg>',
+  bookmark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18l-6-4-6 4z"/></svg>',
 };
 
 const NAV_ITEMS = {
@@ -51,9 +55,12 @@ const NAV_ITEMS = {
     { id: "home", label: "Início", icon: "home" },
     { id: "radar", label: "Radar de oportunidades", icon: "radar" },
     { id: "jobs", label: "Vagas", icon: "jobs" },
+    { id: "favorites", label: "Vagas salvas", icon: "bookmark" },
     { id: "applications", label: "Minhas candidaturas", icon: "applications" },
     { id: "resume", label: "Currículo", icon: "resume" },
     { id: "courses", label: "Cursos e desenvolvimento", icon: "courses" },
+    { id: "interviews", label: "Preparação para entrevistas", icon: "sparkles" },
+    { id: "connections", label: "Empresas e mensagens", icon: "people" },
     { id: "notifications", label: "Notificações", icon: "notifications" },
     { id: "profile", label: "Meu perfil", icon: "profile", href: "perfil.html" },
     { id: "settings", label: "Configurações", icon: "settings" },
@@ -62,7 +69,9 @@ const NAV_ITEMS = {
     { id: "home", label: "Painel principal", icon: "home" },
     { id: "company-profile", label: "Dados da empresa", icon: "company" },
     { id: "company-jobs", label: "Vagas publicadas", icon: "jobs" },
-    { id: "company-applicants", label: "Candidatos", icon: "people" },
+    { id: "company-applicants", label: "Candidaturas", icon: "applications" },
+    { id: "company-talent", label: "Banco de talentos", icon: "people" },
+    { id: "company-connections", label: "Conexões e mensagens", icon: "notifications" },
   ],
   admin: [
     { id: "home", label: "Dashboard", icon: "home" },
@@ -79,9 +88,12 @@ const PAGE_META = {
     home: ["Visão geral", "Início", "Seu próximo passo profissional começa com um perfil completo e oportunidades que façam sentido."],
     radar: ["Descoberta demonstrativa", "Radar de oportunidades", "Empresas de exemplo e anúncios fictícios ordenados por compatibilidade estimada e região."],
     jobs: ["Catálogo local", "Vagas", "Pesquise e filtre anúncios demonstrativos. Nenhuma vaga exibida representa contratação confirmada."],
+    favorites: ["Sua lista pessoal", "Vagas salvas", "Organize oportunidades guardadas somente neste navegador."],
     applications: ["Acompanhamento local", "Minhas candidaturas", "Veja os interesses que você registrou neste navegador e os status de demonstração."],
     resume: ["Seu perfil profissional", "Currículo", "Visualize um currículo organizado com suas informações e use a impressão do navegador para salvar como PDF."],
     courses: ["Aprendizado contínuo", "Cursos e desenvolvimento", "Sugestões de temas para estudar. Não são cursos parceiros nem certificados oficiais."],
+    interviews: ["Treino guiado", "Preparação para entrevistas", "Pratique respostas com perguntas estruturadas e feedback por regras locais. A integração de IA está pendente."],
+    connections: ["Conexão profissional", "Empresas e mensagens", "Explore perfis empresariais e converse somente após iniciar ou aceitar uma conexão demonstrativa."],
     notifications: ["Atualizações", "Notificações", "Avisos gerados pela demonstração local. Nenhuma comunicação foi enviada por e-mail."],
     settings: ["Conta e privacidade", "Configurações", "Preferências salvas neste navegador. Para produção, autenticação e privacidade precisam de backend."],
   },
@@ -89,7 +101,9 @@ const PAGE_META = {
     home: ["Área da empresa", "Painel principal", "Gerencie seu perfil demonstrativo, anúncios de vaga e candidaturas recebidas localmente."],
     "company-profile": ["Perfil empresarial", "Dados da empresa", "Edite os dados da conta de demonstração. A validação real da empresa requer serviço externo."],
     "company-jobs": ["Publicação e gestão", "Vagas publicadas", "Crie, edite, arquive e acompanhe anúncios demonstrativos. Novas vagas aguardam revisão do admin local."],
-    "company-applicants": ["Processos demonstrativos", "Candidatos interessados", "Consulte currículos e altere status de candidaturas registradas neste navegador."],
+    "company-applicants": ["Processos demonstrativos", "Candidaturas", "Consulte currículos de pessoas que demonstraram interesse e atualize o status local."],
+    "company-talent": ["Busca com consentimento", "Banco de talentos", "Consulte somente candidatos que permitiram aparecer no banco demonstrativo. Compatibilidade segue critérios transparentes."],
+    "company-connections": ["Contato autorizado", "Conexões e mensagens", "Envie convites a perfis visíveis e converse apenas quando a conexão for aceita."],
   },
   admin: {
     home: ["Administração separada", "Dashboard", "Indicadores sobre os dados fictícios locais. Este painel não concede segurança real em uma hospedagem estática."],
@@ -218,6 +232,7 @@ function jobCard(job, { showScore = false, showDescription = true, applications 
   const company = PlatformService.getCompany(job.companyId);
   const score = showScore ? jobScore(job, currentUser) : null;
   const alreadyApplied = applications ? applications.has(job.id) : hasApplied(job.id);
+  const isFavorite = session.role === "candidate" && PlatformService.isFavorite(currentUser.id, job.id);
   const requirementTags = (job.requirements || []).slice(0, 4).map((skill) => `<span class="tag-view">${escapeHtml(skill)}</span>`).join("");
   const url = safeHttpUrl(job.applicationUrl);
   return `<article class="job-card">
@@ -237,6 +252,7 @@ function jobCard(job, { showScore = false, showDescription = true, applications 
       <span class="demo-tag">Demonstração · contratação não confirmada</span>
       <div class="job-card-actions">
         <button type="button" class="btn btn-ghost btn-sm" data-action="job-details" data-id="${escapeHtml(job.id)}">Ver detalhes</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-action="toggle-favorite" data-id="${escapeHtml(job.id)}" aria-pressed="${isFavorite}">${isFavorite ? "Remover salva" : "Salvar vaga"}</button>
         ${alreadyApplied ? '<span class="status-pill success">Interesse registrado</span>' : `<button type="button" class="btn btn-primary btn-sm" data-action="apply-job" data-id="${escapeHtml(job.id)}">Registrar interesse</button>`}
         ${url ? `<a class="btn btn-ghost btn-sm" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Canal externo</a>` : ""}
       </div>
@@ -296,9 +312,12 @@ function renderPage() {
     if (currentView === "home") html = renderCandidateHome();
     else if (currentView === "radar") html = renderRadar();
     else if (currentView === "jobs") html = renderJobsPage();
+    else if (currentView === "favorites") html = renderFavoritesPage();
     else if (currentView === "applications") html = renderApplicationsPage();
     else if (currentView === "resume") html = renderResumePage();
     else if (currentView === "courses") html = renderCoursesPage();
+    else if (currentView === "interviews") html = renderInterviewPracticePage();
+    else if (currentView === "connections") html = renderCandidateConnectionsPage();
     else if (currentView === "notifications") html = renderNotificationsPage();
     else if (currentView === "settings") html = renderSettingsPage();
   } else if (session.role === "company") {
@@ -306,6 +325,8 @@ function renderPage() {
     else if (currentView === "company-profile") html = renderCompanyProfilePage();
     else if (currentView === "company-jobs") html = renderCompanyJobsPage();
     else if (currentView === "company-applicants") html = renderCompanyApplicantsPage();
+    else if (currentView === "company-talent") html = renderCompanyTalentPage();
+    else if (currentView === "company-connections") html = renderCompanyConnectionsPage();
   } else if (session.role === "admin") {
     if (currentView === "home") html = renderAdminHome();
     else if (currentView === "admin-candidates") html = renderAdminCandidatesPage();
@@ -318,6 +339,7 @@ function renderPage() {
   setHeader(meta[0], meta[1], meta[2], headerAction);
   appContent.innerHTML = html || emptyState("Área indisponível", "Selecione uma seção no menu para continuar.");
   if (currentView === "jobs") renderFilteredJobs();
+  if (currentView === "company-talent") renderCompanyTalentResults();
   if (currentView === "admin-candidates") renderAdminCandidatesTable();
   if (currentView === "admin-companies") renderAdminCompaniesTable();
   updateNotificationCount();
@@ -475,6 +497,153 @@ function renderFilteredJobs() {
   results.innerHTML = jobs.length ? jobs.map((job) => jobCard(job, { showScore: true })).join("") : emptyState("Nenhuma oportunidade encontrada", "Altere os filtros ou aguarde a aprovação de novos anúncios demonstrativos.");
 }
 
+function renderFavoritesPage() {
+  const favorites = PlatformService.getCandidateFavorites(currentUser.id);
+  const publishedIds = new Set(PlatformService.getPublishedJobs().map((job) => job.id));
+  const cards = favorites.map(({ job }) => {
+    if (!job) return "";
+    if (publishedIds.has(job.id)) return jobCard(job, { showScore: true });
+    return `<article class="application-card"><div><h3>${escapeHtml(job.title)}</h3><p>${escapeHtml(companyName(job.companyId))} · ${escapeHtml(locationText(job))}</p><p>Este anúncio não está ativo no catálogo demonstrativo.</p></div><div class="job-card-actions"><span class="status-pill">Indisponível</span><button type="button" class="btn btn-ghost btn-sm" data-action="toggle-favorite" data-id="${escapeHtml(job.id)}">Remover salva</button></div></article>`;
+  }).join("");
+  return `<section class="panel-card" style="margin-bottom:1rem"><div class="card-head"><div><h2>Suas vagas favoritas</h2><p class="panel-card-subtitle">Lista privada deste navegador. Favoritar não envia seus dados à empresa.</p></div><span class="demo-tag">${favorites.length} salva(s)</span></div></section><div class="job-list">${cards || emptyState("Nenhuma vaga salva", "Use “Salvar vaga” no catálogo demonstrativo para organizar oportunidades de interesse.", "bookmark")}</div>`;
+}
+
+function renderInterviewPracticePage() {
+  const jobTypes = CATALOGS.tiposVaga;
+  if (!jobTypes.includes(interviewDraft.jobType)) interviewDraft.jobType = "Primeiro Emprego";
+  const questions = InterviewPracticeService.questionsFor(interviewDraft.jobType);
+  if (!questions.some((question) => question.id === interviewDraft.questionId)) interviewDraft.questionId = questions[0]?.id || "";
+  const history = PlatformService.getInterviewHistory(currentUser.id);
+  const selectedQuestion = questions.find((question) => question.id === interviewDraft.questionId) || questions[0];
+  const questionOptions = questions.map((question) => `<option value="${escapeHtml(question.id)}" ${question.id === interviewDraft.questionId ? "selected" : ""}>${escapeHtml(question.question)}</option>`).join("");
+  const activeReview = history.find((entry) => entry.id === interviewReviewId);
+  const speechSupported = Boolean(globalThis.window?.SpeechRecognition || globalThis.window?.webkitSpeechRecognition);
+  const feedback = activeReview?.feedback;
+  return `<section class="panel-card" style="margin-bottom:1rem"><div class="card-head"><div><h2>Pratique no seu ritmo</h2><p class="panel-card-subtitle">Perguntas estruturadas para Jovem Aprendiz, estágio e primeiro emprego. Suas respostas ficam neste navegador.</p></div><span class="demo-tag">Treino guiado</span></div><p class="form-help">A IA não está conectada nesta versão. O retorno abaixo usa somente uma checklist simples de extensão e palavras-chave: não atribui nota, não mede aptidão e não prevê contratação. Não inclua dados pessoais sensíveis.</p></section>
+    <form class="form-panel" data-form="interview-practice" novalidate>
+      <div class="form-row"><div class="field"><label for="interviewType">Tipo de oportunidade</label><select class="input" id="interviewType">${optionList(jobTypes, interviewDraft.jobType, "Selecione")}</select></div><div class="field"><label for="interviewExperience">Experiência que deseja praticar</label><select class="input" id="interviewExperience">${optionList(["Primeira oportunidade", "Tenho projetos ou atividades", "Já tive experiência formal"], interviewDraft.experienceLevel, "Selecione")}</select></div></div>
+      <div class="field"><label for="interviewTargetRole">Cargo ou área desejada <span class="optional">(opcional)</span></label><input class="input" id="interviewTargetRole" maxlength="120" value="${escapeHtml(interviewDraft.targetRole)}" placeholder="Ex.: atendimento, auxiliar administrativo" /></div>
+      <div class="field"><label for="interviewQuestion">Pergunta para praticar</label><select class="input" id="interviewQuestion">${questionOptions}</select></div>
+      <div class="field"><label for="interviewAnswer">Sua resposta</label><textarea class="input" id="interviewAnswer" rows="6" maxlength="2000" placeholder="Responda com suas palavras. Experiências escolares, projetos e atividades também contam.">${escapeHtml(interviewDraft.answer)}</textarea><p class="error-msg">Escreva ao menos 10 caracteres para revisar sua resposta.</p><p class="form-help">${speechSupported ? "Você pode usar a entrada por voz do navegador; a disponibilidade e o processamento dependem dele." : "Entrada por voz não está disponível neste navegador; responda por texto."}</p></div>
+      <div class="form-actions">${speechSupported ? button("Ditado por voz", "speech-to-text", { style: "btn-ghost", small: true }) : ""}<button type="submit" class="btn btn-primary">Revisar minha resposta</button></div>
+    </form>
+    ${feedback ? `<section class="panel-card" style="margin-top:1rem"><div class="card-head"><div><h2>Reflexão guiada</h2><p class="panel-card-subtitle">${escapeHtml(activeReview.question)}</p></div><span class="demo-tag">Sem nota / sem IA</span></div><div class="panel-grid two">${feedback.observations.map((item) => `<article class="application-card"><div><h3>${escapeHtml(item.label)}</h3><p>${escapeHtml(item.text)}</p></div></article>`).join("")}</div><div class="app-modal-section"><h3>Pontos para experimentar</h3><ul>${feedback.improvements.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul><p style="margin-top:.6rem"><strong>Estrutura possível:</strong> ${escapeHtml(feedback.answerStructure)}</p><p class="form-help" style="margin-top:.6rem">${escapeHtml(feedback.disclaimer)}</p></div></section>` : ""}
+    <section class="panel-card" style="margin-top:1rem"><div class="card-head"><div><h2>Histórico de prática</h2><p class="panel-card-subtitle">Registros locais para acompanhar respostas e revisar sua própria evolução; não são avaliações de recrutamento.</p></div><span class="demo-tag">${history.length} sessão(ões)</span></div><div class="job-list">${history.length ? history.slice(0, 8).map((entry) => `<article class="application-card"><div><h3>${escapeHtml(entry.jobType)}${entry.targetRole ? ` · ${escapeHtml(entry.targetRole)}` : ""}</h3><p>${formattedDate(entry.createdAt, true)} · ${escapeHtml(entry.question)}</p><details><summary>Rever sua resposta</summary><p style="margin-top:.5rem;white-space:pre-wrap">${escapeHtml(entry.answer)}</p></details></div><button type="button" class="btn btn-ghost btn-sm" data-action="delete-interview" data-id="${escapeHtml(entry.id)}">Excluir</button></article>`).join("") : emptyState("Nenhuma prática salva", "Envie uma resposta para criar seu primeiro registro local.", "sparkles")}</div></section>`;
+}
+
+function renderConversationCard(connection, otherName, otherSubtitle) {
+  const statusText = { connected: "Conexão aceita", pending: "Convite pendente", declined: "Convite recusado", blocked: "Contato bloqueado" }[connection.status] || "Status indisponível";
+  const candidateControls = session.role === "candidate" && connection.status === "pending" && connection.initiatedBy === "company"
+    ? `<div class="job-card-actions"><button type="button" class="btn btn-primary btn-sm" data-action="accept-connection" data-id="${escapeHtml(connection.id)}">Aceitar convite</button><button type="button" class="btn btn-ghost btn-sm" data-action="decline-connection" data-id="${escapeHtml(connection.id)}">Recusar</button></div>`
+    : "";
+  let thread = "";
+  if (connection.status === "connected") {
+    PlatformService.markConnectionMessagesRead(connection.id, session.userId);
+    const messages = PlatformService.getConnectionMessages(connection.id, session.userId);
+    thread = `<ol class="application-history">${messages.length ? messages.map((message) => `<li><strong>${message.senderId === session.userId ? "Você" : escapeHtml(otherName)}</strong> · ${formattedDate(message.createdAt, true)}<br>${escapeHtml(message.body)}</li>`).join("") : "<li>Conexão aceita. Envie uma mensagem profissional para iniciar a conversa.</li>"}</ol>
+      <form class="form-panel" data-form="connection-message" data-connection-id="${escapeHtml(connection.id)}" novalidate><div class="field"><label for="message-${escapeHtml(connection.id)}">Nova mensagem</label><textarea class="input" id="message-${escapeHtml(connection.id)}" rows="3" maxlength="2000" placeholder="Escreva uma mensagem respeitosa e objetiva."></textarea><p class="error-msg">Escreva uma mensagem.</p></div><div class="form-actions"><button type="submit" class="btn btn-primary btn-sm">Enviar mensagem</button></div></form>
+      <div class="job-card-actions" style="margin-top:.65rem"><button type="button" class="btn btn-ghost btn-sm" data-action="report-connection" data-id="${escapeHtml(connection.id)}">Denunciar contato</button><button type="button" class="btn btn-danger-ghost btn-sm" data-action="block-connection" data-id="${escapeHtml(connection.id)}">Bloquear contato</button></div>`;
+  } else if (connection.status === "pending" && connection.invitationMessage) {
+    thread = `<p class="panel-card-subtitle" style="margin:.6rem 0">${escapeHtml(connection.invitationMessage)}</p>`;
+  } else if (connection.status === "blocked") {
+    thread = `<p class="form-help">A conversa foi bloqueada e não aceita novas mensagens.</p>`;
+  }
+  return `<article class="panel-card"><div class="card-head"><div><h2>${escapeHtml(otherName)}</h2><p class="panel-card-subtitle">${escapeHtml(otherSubtitle)} · ${escapeHtml(statusText)} · demonstração local</p></div>${candidateControls}</div>${thread}</article>`;
+}
+
+function openConnectionIntroduction(companyId) {
+  const company = PlatformService.getCompany(companyId);
+  if (!company || !company.ownerId) { showToast("Esta empresa não possui conta habilitada para conexões nesta demonstração.", "info"); return; }
+  const body = `<form data-form="connection-introduction" data-company-id="${escapeHtml(company.id)}" novalidate><div class="field"><label for="connectionIntroduction">Sua apresentação</label><textarea class="input" id="connectionIntroduction" rows="5" maxlength="1200" placeholder="Apresente seu interesse profissional, uma habilidade ou projeto e o que gostaria de conhecer."></textarea><p class="error-msg">Escreva ao menos 10 caracteres.</p></div><p class="form-help">Sua mensagem será entregue somente à conta empresarial associada, neste navegador. Seus dados de contato não são incluídos automaticamente.</p><div class="modal-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Cancelar</button><button type="submit" class="btn btn-primary">Enviar apresentação</button></div></form>`;
+  openDialog("Demonstrar interesse na empresa", company.name, body);
+}
+
+function openCandidateInvite(candidateId) {
+  const candidate = UserService.listByRole("candidate").find((entry) => entry.id === candidateId);
+  if (!candidate || !PlatformService.canCompanyViewCandidate(session.companyId, candidateId)) { showToast("Este perfil não está disponível para convite.", "error"); return; }
+  const body = `<form data-form="connection-invite" data-candidate-id="${escapeHtml(candidateId)}" novalidate><div class="field"><label for="candidateInvitation">Mensagem do convite</label><textarea class="input" id="candidateInvitation" rows="5" maxlength="1200" placeholder="Explique o motivo do convite e o próximo passo proposto."></textarea><p class="error-msg">Escreva ao menos 10 caracteres.</p></div><p class="form-help">O candidato poderá aceitar ou recusar. A conversa só será aberta após a aceitação; os dados de contato permanecem ocultos.</p><div class="modal-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Cancelar</button><button type="submit" class="btn btn-primary">Enviar convite</button></div></form>`;
+  openDialog("Convidar candidato", candidate.nome, body);
+}
+
+function renderCandidateConnectionsPage() {
+  const connections = PlatformService.getCandidateConnections(currentUser.id);
+  const companies = PlatformService.getCompanies({ includeInactive: true }).filter((company) => company.active !== false);
+  const directory = companies.map((company) => {
+    const connection = connections.find((entry) => entry.companyId === company.id);
+    const website = safeHttpUrl(company.website);
+    let action = "";
+    if (connection?.status === "connected") action = `<span class="status-pill success">Conectada</span>`;
+    else if (connection?.status === "pending") action = `<span class="status-pill pending">Convite recebido</span>`;
+    else if (connection) action = `<span class="status-pill">${connection.status === "blocked" ? "Bloqueada" : "Contato encerrado"}</span>`;
+    else if (company.ownerId) action = `<button type="button" class="btn btn-primary btn-sm" data-action="start-company-connection" data-id="${escapeHtml(company.id)}">Demonstrar interesse</button>`;
+    else action = `<span class="form-help">Sem conta habilitada para receber mensagens.</span>`;
+    return `<article class="company-found-card"><span class="company-found-icon">${ICONS.company}</span><div><h3>${escapeHtml(company.name)}</h3><p>${escapeHtml(company.sector || "Setor não informado")} · ${escapeHtml(locationText(company))}</p><p>${escapeHtml(company.description || "Descrição não informada.")}</p>${website ? `<p><a href="${escapeHtml(website)}" target="_blank" rel="noopener noreferrer">Site da empresa ↗</a></p>` : ""}<span class="demo-tag">${company.isDemo ? "Demonstração" : "Cadastro local"}</span></div>${action}</article>`;
+  }).join("");
+  const threads = connections.map((connection) => renderConversationCard(connection, connection.company?.name || "Empresa", locationText(connection.company))).join("");
+  const unread = PlatformService.getUnreadMessageCount(session.userId);
+  return `<section class="panel-card" style="margin-bottom:1rem"><div class="card-head"><div><h2>Conheça empresas e inicie uma conversa</h2><p class="panel-card-subtitle">Somente empresas com conta neste navegador podem receber uma apresentação. Conectar é uma ação explícita; nenhuma mensagem é enviada a empresas reais.</p></div><span class="demo-tag">${unread} não lida(s)</span></div><div class="job-list">${directory || emptyState("Nenhuma empresa disponível", "Empresas aparecem aqui quando há um perfil empresarial local ativo.", "company")}</div></section>
+    <section class="panel-card"><div class="card-head"><div><h2>Convites, conexões e mensagens</h2><p class="panel-card-subtitle">Aceite um convite antes de trocar mensagens. Você pode denunciar ou bloquear contatos.</p></div></div><div class="job-list">${threads || emptyState("Sem conexões", "Demonstre interesse em uma empresa para criar uma conexão de demonstração.", "people")}</div></section>`;
+}
+
+function renderCompanyTalentPage() {
+  return `<section class="panel-card" style="margin-bottom:1rem"><div class="card-head"><div><h2>Banco de talentos com consentimento</h2><p class="panel-card-subtitle">A lista contém apenas perfis ativos que autorizaram visibilidade. E-mail e telefone ficam ocultos até candidatura ou conexão aceita.</p></div><span class="demo-tag">Dados deste navegador</span></div>
+      <div class="panel-grid three"><div class="field"><label for="talentSkills">Habilidade ou palavra-chave</label><input class="input" id="talentSkills" data-filter="company-talents" type="search" placeholder="Ex.: Excel, comunicação" /></div><div class="field"><label for="talentEducation">Escolaridade</label><select class="input" id="talentEducation" data-filter="company-talents">${optionList(CATALOGS.escolaridades, "", "Qualquer escolaridade")}</select></div><div class="field"><label for="talentCity">Cidade / UF</label><input class="input" id="talentCity" data-filter="company-talents" type="search" placeholder="Ex.: Araucária, PR" /></div></div>
+      <label class="check-row"><input id="talentOnlySaved" data-filter="company-talents" type="checkbox" /><span>Mostrar somente talentos salvos pela empresa.</span></label>
+    </section><p class="results-caption" id="talentResultsCaption"></p><div class="job-list" id="companyTalentResults"></div>`;
+}
+
+function renderCompanyTalentResults() {
+  const target = $("#companyTalentResults", appContent);
+  if (!target) return;
+  const skillTerm = normalizedText($("#talentSkills", appContent)?.value);
+  const education = normalizedText($("#talentEducation", appContent)?.value);
+  const cityTerm = normalizedText($("#talentCity", appContent)?.value);
+  const savedOnly = Boolean($("#talentOnlySaved", appContent)?.checked);
+  const savedIds = new Set(PlatformService.getSavedTalentIds(session.companyId));
+  const candidates = UserService.listByRole("candidate").filter((candidate) => {
+    if (candidate.status !== "active" || !PlatformService.getCandidateSettings(candidate.id).visibleToCompanies) return false;
+    const searchText = normalizedText(`${candidate.habilidades.join(" ")} ${candidate.curso} ${candidate.resumo}`);
+    const candidateLocation = normalizedText(`${candidate.cidade} ${candidate.estado}`);
+    return (!skillTerm || searchText.includes(skillTerm))
+      && (!education || normalizedText(candidate.escolaridade).includes(education))
+      && (!cityTerm || candidateLocation.includes(cityTerm))
+      && (!savedOnly || savedIds.has(candidate.id));
+  });
+  const companyJobs = PlatformService.getCompanyJobs(session.companyId).filter((job) => job.approved && job.active !== false && !job.removed);
+  const ranked = candidates.map((candidate) => {
+    const best = companyJobs.map((job) => ({ job, match: MatchService.score(candidate, job) })).sort((a, b) => b.match.percentage - a.match.percentage)[0] || null;
+    return { candidate, best };
+  }).sort((a, b) => (b.best?.match.percentage ?? -1) - (a.best?.match.percentage ?? -1));
+  $("#talentResultsCaption", appContent).textContent = `${ranked.length} perfil(is) visível(is) após aplicar os filtros e a preferência de privacidade.`;
+  target.innerHTML = ranked.length ? ranked.map(({ candidate, best }) => {
+    const saved = savedIds.has(candidate.id);
+    const connection = PlatformService.getCompanyConnections(session.companyId).find((entry) => entry.candidateId === candidate.id);
+    const connectionAction = connection?.status === "connected"
+      ? `<span class="status-pill success">Conectado</span>`
+      : connection?.status === "pending"
+        ? `<span class="status-pill pending">Convite pendente</span>`
+        : connection
+          ? `<span class="status-pill">${connection.status === "blocked" ? "Contato bloqueado" : "Convite encerrado"}</span>`
+          : `<button type="button" class="btn btn-ghost btn-sm" data-action="invite-candidate" data-id="${escapeHtml(candidate.id)}">Convidar</button>`;
+    const match = best ? `<p><strong>${best.match.percentage}% de compatibilidade estimada</strong> com “${escapeHtml(best.job.title)}” — regra local por habilidades, área, tipo, escolaridade e região; não é IA nem decisão de contratação.</p><p>${escapeHtml(best.match.reasons.slice(0, 3).join(" · "))}</p>` : `<p>Publique e aprove uma vaga demonstrativa para comparar requisitos de forma explicável.</p>`;
+    return `<article class="application-card"><div><h3>${escapeHtml(candidate.nome)}</h3><p>${escapeHtml(locationText(candidate))} · ${escapeHtml(candidate.escolaridade || "Escolaridade não informada")}</p><p>${escapeHtml(candidate.curso || "Curso não informado")}</p><div class="tag-list">${candidate.habilidades.slice(0, 6).map((skill) => `<span class="tag-view">${escapeHtml(skill)}</span>`).join("")}</div>${match}</div><div class="job-card-actions"><button type="button" class="btn btn-ghost btn-sm" data-action="view-candidate" data-id="${escapeHtml(candidate.id)}">Ver perfil autorizado</button><button type="button" class="btn btn-ghost btn-sm" data-action="toggle-saved-talent" data-id="${escapeHtml(candidate.id)}">${saved ? "Remover salvo" : "Salvar talento"}</button>${connectionAction}</div></article>`;
+  }).join("") : emptyState("Nenhum perfil corresponde", "Ajuste os filtros ou aguarde candidatos que optem por aparecer no banco de talentos.", "people");
+}
+
+function renderCompanyConnectionsPage() {
+  const connections = PlatformService.getCompanyConnections(session.companyId);
+  connections.forEach((connection) => {
+    if (connection.status === "connected") PlatformService.markConnectionMessagesRead(connection.id, session.userId);
+  });
+  const unread = PlatformService.getUnreadMessageCount(session.userId);
+  const cards = connections.map((connection) => renderConversationCard(
+    connection,
+    connection.candidate?.nome || "Perfil indisponível",
+    connection.candidate ? `${locationText(connection.candidate)} · ${connection.candidate.escolaridade || "Formação não informada"}` : "Candidato indisponível",
+  )).join("");
+  return `<section class="panel-card" style="margin-bottom:1rem"><div class="card-head"><div><h2>Conversas autorizadas</h2><p class="panel-card-subtitle">Convites aparecem aqui até o candidato decidir. Mensagens só são habilitadas após conexão aceita.</p></div><span class="demo-tag">${unread} não lida(s)</span></div><div class="job-list">${cards || emptyState("Sem conexões ainda", "Consulte o banco de talentos autorizado ou aguarde apresentações de candidatos.", "people")}</div><div class="quick-link-row">${button("Abrir banco de talentos", "go-view", { style: "btn-ghost", small: true, id: "company-talent" })}</div></section>`;
+}
+
 function renderApplicationsPage() {
   const applications = PlatformService.getCandidateApplications(currentUser.id);
   return `<section class="panel-card" style="margin-bottom:1rem"><div class="card-head"><div><h2>Interesses registrados</h2><p class="panel-card-subtitle">Ao clicar em “Registrar interesse”, nenhuma candidatura é enviada para fora deste navegador. Status alterados por empresa são apenas demonstrações.</p></div><span class="demo-tag">Local</span></div></section>
@@ -532,8 +701,8 @@ function renderSettingsPage() {
       <form class="form-panel" data-form="candidate-settings" novalidate>
         <div class="field"><label for="settingDistance">Distância máxima desejada</label><select class="input" id="settingDistance">${DISTANCE_OPTIONS.map((distance) => `<option value="${distance}" ${Number(settings.distanceMaxKm) === distance ? "selected" : ""}>Até ${distance} km</option>`).join("")}</select><p class="form-help">Estimativa regional ilustrativa; não usa GPS nem Google Maps.</p></div>
         <label class="check-row"><input type="checkbox" id="settingJobNotifications" ${settings.notifyNewJobs ? "checked" : ""} /><span>Receber notificações demonstrativas sobre novas oportunidades no painel.</span></label>
-        <label class="check-row"><input type="checkbox" id="settingVisible" ${settings.visibleToCompanies ? "checked" : ""} /><span>Permitir que a área de empresa de demonstração consulte meus dados de contato quando eu registrar interesse.</span></label>
-        <p class="form-help">Esta preferência é apenas demonstrativa; não substitui controles de privacidade ou autorização no servidor.</p>
+        <label class="check-row"><input type="checkbox" id="settingVisible" ${settings.visibleToCompanies ? "checked" : ""} /><span>Permitir que empresas me encontrem no banco de talentos demonstrativo. Contato só é exibido após candidatura ou conexão aceita.</span></label>
+        <p class="form-help">Esta preferência é apenas demonstrativa e vale neste navegador. Desativá-la remove seu perfil das novas buscas de talentos; não substitui autorização no servidor.</p>
         <div class="form-actions"><button type="submit" class="btn btn-primary">Salvar preferências</button></div>
       </form>
     </section>
@@ -555,7 +724,7 @@ function renderSettingsPage() {
       </form>
       <p class="form-help" style="margin-top:.8rem">A senha é derivada com PBKDF2 antes de ser guardada localmente. Isso não torna o localStorage seguro nem equivale a autenticação real.</p>
     </section>
-    <section class="panel-card"><div class="card-head"><div><h2>Privacidade e ajuda</h2><p class="panel-card-subtitle">Preferências de visibilidade demonstrativas.</p></div></div><p style="font-size:.84rem;color:var(--text-muted)">O controle de visibilidade se aplica somente ao conteúdo salvo neste navegador. Não é uma regra de autorização para produção.</p><p style="margin-top:.7rem;font-size:.82rem"><a href="privacidade.html">Política demonstrativa de privacidade</a></p>${button("Relatar um problema", "open-report", { style: "btn-ghost", small: true, icon: "issue" })}</section>
+    <section class="panel-card"><div class="card-head"><div><h2>Privacidade e ajuda</h2><p class="panel-card-subtitle">Preferências de visibilidade demonstrativas.</p></div></div><p style="font-size:.84rem;color:var(--text-muted)">O controle de visibilidade se aplica somente ao conteúdo salvo neste navegador. Não é uma regra de autorização para produção.</p><p style="margin-top:.7rem;font-size:.82rem"><a href="privacidade.html">Política demonstrativa de privacidade</a></p><div class="job-card-actions" style="margin-top:.75rem">${button("Relatar um problema", "open-report", { style: "btn-ghost", small: true, icon: "issue" })}${APP_CONFIG.useApi ? "" : button("Excluir conta e dados locais", "delete-demo-account", { style: "btn-danger-ghost", small: true })}</div><p class="form-help">A exclusão remove a conta e os registros associados somente deste navegador; não apaga dados enviados a terceiros nem substitui um pedido de exclusão em produção.</p></section>
   </div>`;
 }
 
@@ -572,7 +741,7 @@ function renderCompanyHome() {
     <div class="stat-card"><div class="stat-card-top"><span>Candidatos únicos</span><span class="stat-icon">${ICONS.people}</span></div><strong>${applicants}</strong><span>Perfis demonstrativos neste navegador</span></div>
   </div>
   <div class="panel-grid two">
-    <section class="panel-card"><div class="card-head"><div><h2>Olá, ${escapeHtml(firstName(currentCompany?.name || currentUser.nome))}</h2><p class="panel-card-subtitle">Este painel está ligado à conta empresarial demonstrativa.</p></div><span class="demo-tag">Empresa fictícia</span></div><p style="color:var(--text-muted);font-size:.86rem">${escapeHtml(currentCompany?.description || "Complete o cadastro empresarial para apresentar melhor sua organização.")}</p><div class="quick-link-row">${button("Editar dados da empresa", "go-view", { style: "btn-ghost", small: true, id: "company-profile" })}${button("Publicar nova vaga", "new-job", { small: true })}</div></section>
+    <section class="panel-card"><div class="card-head"><div><h2>Olá, ${escapeHtml(firstName(currentCompany?.name || currentUser.nome))}</h2><p class="panel-card-subtitle">Este painel está ligado à conta empresarial demonstrativa.</p></div><span class="demo-tag">Empresa fictícia</span></div><p style="color:var(--text-muted);font-size:.86rem">${escapeHtml(currentCompany?.description || "Complete o cadastro empresarial para apresentar melhor sua organização.")}</p><div class="quick-link-row">${button("Editar dados da empresa", "go-view", { style: "btn-ghost", small: true, id: "company-profile" })}${button("Publicar nova vaga", "new-job", { small: true })}${button("Banco de talentos", "go-view", { style: "btn-ghost", small: true, id: "company-talent" })}${button("Conexões e mensagens", "go-view", { style: "btn-ghost", small: true, id: "company-connections" })}</div></section>
     <section class="panel-card is-tinted"><div class="eyebrow">Transparência</div><h2>Publicação demonstrativa</h2><p style="margin-top:.45rem">Novos anúncios são fictícios, ficam pendentes da revisão local e só aparecem no catálogo após aprovação pela conta de administração.</p><div class="quick-link-row">${button("Gerenciar anúncios", "go-view", { style: "btn-ghost", small: true, id: "company-jobs" })}</div></section>
   </div>
   <section class="panel-card" style="margin-top:1rem"><div class="card-head"><div><h2>Atividade recente</h2><p class="panel-card-subtitle">Candidaturas relacionadas às suas vagas demonstrativas.</p></div>${button("Ver candidatos", "go-view", { style: "btn-ghost", small: true, id: "company-applicants" })}</div>
@@ -713,9 +882,30 @@ function openJobDetails(jobId) {
   openDialog(job.title, company?.name || "Detalhes da oportunidade", body, actions);
 }
 
-function openReportDialog() {
-  const body = `<form data-form="report" novalidate><div class="field"><label for="reportCategory">Categoria</label><select class="input" id="reportCategory">${optionList(["Dúvida", "Problema técnico", "Conteúdo inadequado", "Privacidade", "Outro"], "", "Selecione")}</select><p class="error-msg">Selecione uma categoria.</p></div><div class="field"><label for="reportDescription">Descreva o relato</label><textarea class="input" id="reportDescription" rows="5" maxlength="1000" placeholder="Conte o que aconteceu (mínimo de 10 caracteres)."></textarea><p class="error-msg">Escreva ao menos 10 caracteres.</p></div><p class="form-help">Relato salvo apenas localmente; nenhum suporte real receberá sua mensagem.</p><div class="modal-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Cancelar</button><button type="submit" class="btn btn-primary">Salvar relato local</button></div></form>`;
+function openReportDialog(connectionId = "") {
+  const body = `<form data-form="report" data-connection-id="${escapeHtml(connectionId)}" novalidate><div class="field"><label for="reportCategory">Categoria</label><select class="input" id="reportCategory">${optionList(["Dúvida", "Problema técnico", "Conteúdo inadequado", "Contato inadequado", "Privacidade", "Outro"], "", "Selecione")}</select><p class="error-msg">Selecione uma categoria.</p></div><div class="field"><label for="reportDescription">Descreva o relato</label><textarea class="input" id="reportDescription" rows="5" maxlength="1000" placeholder="Conte o que aconteceu (mínimo de 10 caracteres)."></textarea><p class="error-msg">Escreva ao menos 10 caracteres.</p></div><p class="form-help">Relato salvo apenas localmente; nenhum suporte real receberá sua mensagem.</p><div class="modal-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Cancelar</button><button type="submit" class="btn btn-primary">Salvar relato local</button></div></form>`;
   openDialog("Relatar um problema", "Formulário de demonstração", body);
+}
+
+function startSpeechRecognition() {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const textarea = $("#interviewAnswer", appContent);
+  if (!SpeechRecognition || !textarea) { showToast("Ditado por voz não está disponível neste navegador.", "info"); return; }
+  const recognition = new SpeechRecognition();
+  recognition.lang = "pt-BR";
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  recognition.onresult = (event) => {
+    const transcript = event.results?.[0]?.[0]?.transcript?.trim();
+    if (!transcript) return;
+    textarea.value = `${textarea.value.trim()}${textarea.value.trim() ? " " : ""}${transcript}`.slice(0, 2000);
+    interviewDraft.answer = textarea.value;
+    textarea.dispatchEvent(new window.Event("input", { bubbles: true }));
+    showToast("Transcrição inserida; revise o texto antes de enviar.", "success");
+  };
+  recognition.onerror = () => showToast("O navegador não conseguiu transcrever. Você pode responder por texto.", "error");
+  try { recognition.start(); showToast("Ditado iniciado pelo navegador.", "info"); }
+  catch { showToast("Não foi possível iniciar o ditado por voz.", "error"); }
 }
 
 function openJobEditor(jobId = null, actorRole = "company") {
@@ -763,11 +953,18 @@ function openAdEditor(adId = null) {
 function openCandidateResume(candidateId) {
   const candidate = UserService.listByRole("candidate").find((entry) => entry.id === candidateId);
   if (!candidate) { showToast("Perfil de candidato não encontrado.", "error"); return; }
-  const settings = PlatformService.getCandidateSettings(candidate.id);
-  const contacts = settings.visibleToCompanies ? `${escapeHtml(candidate.email)}${candidate.telefone ? ` · ${escapeHtml(candidate.telefone)}` : ""}` : "Dados de contato ocultos pela preferência de privacidade do candidato.";
+  if (session.role === "company" && !PlatformService.canCompanyViewCandidate(session.companyId, candidate.id)) {
+    showToast("Este perfil não está disponível para sua empresa.", "error");
+    return;
+  }
+  const canSeeContact = session.role === "company" && PlatformService.canCompanyViewContact(session.companyId, candidate.id);
+  const contacts = canSeeContact ? `${escapeHtml(candidate.email)}${candidate.telefone ? ` · ${escapeHtml(candidate.telefone)}` : ""}` : "Dados de contato ocultos pela preferência de privacidade até candidatura ou conexão autorizada.";
   const picture = candidate.fotoDataUrl ? `<img src="${escapeHtml(candidate.fotoDataUrl)}" alt="" style="width:50px;height:50px;object-fit:cover;border-radius:50%" />` : "";
   const body = `<div class="app-modal-section"><div style="display:flex;align-items:center;gap:.8rem">${picture}<div><h3>${escapeHtml(candidate.nome)}</h3><p>${escapeHtml(locationText(candidate))} · ${escapeHtml(candidate.escolaridade)}</p></div></div><p style="margin-top:.65rem"><strong>Contato:</strong> ${contacts}</p><p><strong>Curso:</strong> ${escapeHtml(candidate.curso || "Não informado")}${candidate.instituicao ? ` · ${escapeHtml(candidate.instituicao)}` : ""}</p></div><div class="app-modal-section"><h3>Resumo</h3><p>${escapeHtml(candidate.resumo || "Não informado")}</p></div><div class="app-modal-section"><h3>Habilidades</h3><p>${escapeHtml((candidate.habilidades || []).join(" · ") || "Não informadas")}</p></div><div class="app-modal-section"><h3>Cursos complementares</h3>${candidate.cursos?.length ? `<ul>${candidate.cursos.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : `<p>Não informados.</p>`}</div><div class="app-modal-section"><h3>Experiência e projetos</h3>${candidate.experiencias?.length ? `<ul>${candidate.experiencias.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : `<p>Não informados.</p>`}</div>`;
-  openDialog("Currículo demonstrativo", "A consulta é exibida apenas porque houve interesse em uma vaga deste navegador.", body, `<button type="button" class="btn btn-primary" data-action="close-modal">Fechar</button>`);
+  const intro = session.role === "company"
+    ? "Consulta local de perfil autorizada pela candidatura ou pela visibilidade escolhida pelo candidato. Contato só aparece após autorização apropriada."
+    : "Consulta administrativa demonstrativa; este perfil e seus dados permanecem locais.";
+  openDialog("Currículo demonstrativo", intro, body, `<button type="button" class="btn btn-primary" data-action="close-modal">Fechar</button>`);
 }
 
 function openCompanyEditorForSelf() {
@@ -801,6 +998,54 @@ function runAction(element) {
     case "go-profile": window.location.href = "perfil.html"; break;
     case "print-resume": window.print(); break;
     case "job-details": openJobDetails(id); break;
+    case "toggle-favorite": {
+      try {
+        const saved = PlatformService.toggleFavorite(currentUser.id, id);
+        showToast(saved ? "Vaga salva na sua lista local." : "Vaga removida das suas salvas.", "success");
+        if (currentView === "jobs") renderFilteredJobs();
+        else renderPage();
+      } catch (error) { showToast(error.message, "error"); }
+      break;
+    }
+    case "start-company-connection": openConnectionIntroduction(id); break;
+    case "invite-candidate": openCandidateInvite(id); break;
+    case "accept-connection":
+    case "decline-connection": {
+      try {
+        const accepted = action === "accept-connection";
+        PlatformService.respondToConnection(id, currentUser.id, accepted);
+        renderPage();
+        showToast(accepted ? "Convite aceito; a conversa está liberada." : "Convite recusado. Nenhum contato foi compartilhado.", "success");
+      } catch (error) { showToast(error.message, "error"); }
+      break;
+    }
+    case "toggle-saved-talent": {
+      try {
+        const saved = PlatformService.toggleSavedTalent(session.companyId, session.userId, id);
+        renderCompanyTalentResults();
+        showToast(saved ? "Talento salvo na lista local da empresa." : "Talento removido da lista local.", "success");
+      } catch (error) { showToast(error.message, "error"); }
+      break;
+    }
+    case "block-connection":
+      askConfirmation("Bloquear este contato?", "A conversa será encerrada neste navegador e não aceitará novas mensagens.", "Bloquear contato", () => {
+        PlatformService.blockConnection(id, session.userId);
+        closeDialog();
+        renderPage();
+        showToast("Contato bloqueado localmente.", "info");
+      }, true);
+      break;
+    case "report-connection": openReportDialog(id); break;
+    case "delete-interview":
+      askConfirmation("Excluir esta prática?", "A resposta e o feedback serão removidos do histórico local deste navegador.", "Excluir prática", () => {
+        PlatformService.deleteInterviewPractice(id, currentUser.id);
+        if (interviewReviewId === id) interviewReviewId = null;
+        closeDialog();
+        renderPage();
+        showToast("Registro de prática removido.", "info");
+      }, true);
+      break;
+    case "speech-to-text": startSpeechRecognition(); break;
     case "apply-job": {
       try {
         PlatformService.applyToJob(id, currentUser);
@@ -915,6 +1160,13 @@ function runAction(element) {
       showToast("Status do relato atualizado.", "success");
       break;
     case "open-report": openReportDialog(); break;
+    case "delete-demo-account":
+      askConfirmation("Excluir sua conta e dados locais?", "A ação remove este perfil, conexões, mensagens, favoritos, relatórios e práticas deste navegador e encerra a sessão. Não pode ser desfeita; não afeta dados enviados a terceiros.", "Excluir dados locais", async () => {
+        await UserService.deleteAccount(session.userId, session.token);
+        AuthService.logout();
+        window.location.replace("login.html");
+      }, true);
+      break;
     case "close-modal": closeDialog(); break;
     case "confirm-modal": {
       const confirmButton = element;
@@ -943,6 +1195,58 @@ async function handleFormSubmit(form) {
   const submitButton = form.querySelector('[type="submit"]');
   if (submitButton) submitButton.disabled = true;
   try {
+    if (kind === "interview-practice") {
+      const answer = $("#interviewAnswer", form);
+      if (!markField(answer, answer.value.trim().length >= 10, "Escreva ao menos 10 caracteres para revisar sua resposta.")) return;
+      const jobType = $("#interviewType", form).value;
+      const questionId = $("#interviewQuestion", form).value;
+      const question = InterviewPracticeService.questionsFor(jobType).find((item) => item.id === questionId);
+      if (!question) { showToast("Selecione uma pergunta válida para continuar.", "error"); return; }
+      interviewDraft = {
+        jobType,
+        experienceLevel: $("#interviewExperience", form).value,
+        targetRole: formValue(form, "interviewTargetRole"),
+        questionId,
+        answer: answer.value.trim(),
+      };
+      const feedback = InterviewPracticeService.reviewAnswer({ answer: interviewDraft.answer, candidate: currentUser });
+      const saved = PlatformService.saveInterviewPractice(currentUser.id, {
+        ...interviewDraft, question: question.question, feedback,
+      });
+      interviewReviewId = saved.id;
+      interviewDraft.answer = "";
+      renderPage();
+      showToast("Revisão guiada salva apenas neste navegador.", "success");
+      return;
+    }
+    if (kind === "connection-introduction") {
+      const introduction = $("#connectionIntroduction", form);
+      if (!markField(introduction, introduction.value.trim().length >= 10, "Escreva ao menos 10 caracteres.")) return;
+      PlatformService.startCandidateConnection(form.dataset.companyId, currentUser.id, introduction.value);
+      closeDialog();
+      currentView = "connections";
+      renderPage();
+      showToast("Apresentação enviada; a conexão demonstrativa está aberta.", "success");
+      return;
+    }
+    if (kind === "connection-invite") {
+      const invitation = $("#candidateInvitation", form);
+      if (!markField(invitation, invitation.value.trim().length >= 10, "Escreva ao menos 10 caracteres.")) return;
+      PlatformService.inviteCandidate(session.companyId, session.userId, form.dataset.candidateId, invitation.value);
+      closeDialog();
+      currentView = "company-connections";
+      renderPage();
+      showToast("Convite demonstrativo enviado; aguarda a decisão do candidato.", "success");
+      return;
+    }
+    if (kind === "connection-message") {
+      const message = form.querySelector("textarea");
+      if (!markField(message, message.value.trim().length >= 1, "Escreva uma mensagem.")) return;
+      PlatformService.sendConnectionMessage(form.dataset.connectionId, session.userId, message.value);
+      renderPage();
+      showToast("Mensagem salva na conversa local.", "success");
+      return;
+    }
     if (kind === "radar-address") {
       const settings = PlatformService.getCandidateSettings(currentUser.id);
       PlatformService.saveCandidateSettings(currentUser.id, { ...settings, radarAddress: $("#radarAddress", form).value });
@@ -1093,7 +1397,7 @@ async function handleFormSubmit(form) {
       valid = markField(category, Validators.required(category.value), "Selecione uma categoria.") && valid;
       valid = markField(description, description.value.trim().length >= 10, "Escreva ao menos 10 caracteres.") && valid;
       if (!valid) return;
-      PlatformService.createReport(currentUser, { category: category.value, description: description.value });
+      PlatformService.createReport(currentUser, { category: category.value, description: description.value, connectionId: form.dataset.connectionId });
       closeDialog();
       if (session.role === "candidate") { currentView = "notifications"; renderPage(); }
       showToast("Relato guardado apenas localmente.", "success");
@@ -1126,9 +1430,22 @@ appContent.addEventListener("input", (event) => {
   if (["jobSearch", "jobCity"].includes(event.target.id)) renderFilteredJobs();
   if (event.target.dataset.filter === "admin-candidates") renderAdminCandidatesTable(event.target.value);
   if (event.target.dataset.filter === "admin-companies") renderAdminCompaniesTable(event.target.value);
+  if (event.target.dataset.filter === "company-talents") renderCompanyTalentResults();
+  if (event.target.id === "interviewAnswer") interviewDraft.answer = event.target.value;
+  if (event.target.id === "interviewTargetRole") interviewDraft.targetRole = event.target.value;
 });
 appContent.addEventListener("change", (event) => {
   if (["jobArea", "jobType", "jobModality"].includes(event.target.id)) renderFilteredJobs();
+  if (event.target.id === "interviewType") {
+    interviewDraft.jobType = event.target.value;
+    interviewDraft.questionId = "";
+    interviewReviewId = null;
+    renderPage();
+    return;
+  }
+  if (event.target.id === "interviewQuestion") { interviewDraft.questionId = event.target.value; interviewReviewId = null; }
+  if (event.target.id === "interviewExperience") interviewDraft.experienceLevel = event.target.value;
+  if (event.target.dataset.filter === "company-talents") renderCompanyTalentResults();
   if (["radarRadius", "radarCity", "radarState", "radarNeighborhood", "radarType", "radarArea", "radarModality"].includes(event.target.id)) {
     const settings = PlatformService.getCandidateSettings(currentUser.id);
     const keyById = { radarRadius: "distanceMaxKm", radarCity: "radarCity", radarState: "radarState", radarNeighborhood: "radarNeighborhood", radarType: "radarType", radarArea: "radarArea", radarModality: "radarModality" };

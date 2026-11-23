@@ -125,6 +125,7 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     assert.match(registered.senhaHash, /^pbkdf2\$/);
     assert.equal(registered.senhaHash.includes("Teste@1234"), false);
     assert.equal(AuthService.getSession()?.role, "candidate");
+    assert.equal(PlatformService.getCandidateSettings(registered.id).visibleToCompanies, false, "Perfil novo deve permanecer privado até consentimento explícito.");
     AuthService.logout();
   });
 
@@ -172,7 +173,7 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     await importPageModule("assets/js/pages/painel.js", "candidate");
     assert.equal(document.querySelector("#sidebarRole").textContent, "Candidato");
     assert.equal(document.querySelector("#pageHeader h1").textContent, "Início");
-    assert.equal(document.querySelectorAll("#appNav [data-view]").length, 8);
+    assert.equal(document.querySelectorAll("#appNav [data-view]").length, 11);
 
     click('#appNav [data-view="radar"]');
     assert.match(document.querySelector("#appContent").textContent, /Empresas no catálogo demonstrativo/);
@@ -412,6 +413,140 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     assert.equal(newJob.isDemo, true);
   });
 
+  await t.test("favoritos, treino guiado e conexões respeitam consentimento e autorização", async () => {
+    AuthService.logout();
+    await AuthService.login("mari.costa+teste@skillmatch.test", "SeguraNova@789", false, "candidate");
+    setDocument(dom, "painel.html");
+    await importPageModule("assets/js/pages/painel.js", "candidate-engagement");
+    const candidate = UserService.listByRole("candidate").find((user) => user.email === "mari.costa+teste@skillmatch.test");
+
+    click('#appNav [data-view="jobs"]');
+    click('#appContent [data-action="toggle-favorite"][data-id="job-demo-ti"]');
+    assert.equal(PlatformService.isFavorite(candidate.id, "job-demo-ti"), true);
+    click('#appNav [data-view="favorites"]');
+    assert.match(document.querySelector("#appContent").textContent, /Assistente de tecnologia/);
+
+    click('#appNav [data-view="interviews"]');
+    setValue("interviewAnswer", "Na escola organizei um projeto em grupo, combinei as tarefas com colegas e aprendi a comunicar os próximos passos.");
+    submit(document.querySelector('form[data-form="interview-practice"]'));
+    assert.equal(PlatformService.getInterviewHistory(candidate.id).length, 1);
+    assert.match(document.querySelector("#appContent").textContent, /não é inteligência artificial/i);
+    assert.match(document.querySelector("#appContent").textContent, /Clareza/);
+
+    click('#appNav [data-view="connections"]');
+    click('#appContent [data-action="start-company-connection"][data-id="company-demo"]');
+    const introductionModal = document.querySelector("#appModalContent");
+    setValue("connectionIntroduction", "Tenho interesse em conhecer a área e apresentar projetos de estudo e habilidades que estou desenvolvendo.", introductionModal);
+    submit(introductionModal.querySelector('form[data-form="connection-introduction"]'));
+    const candidateConnection = PlatformService.getCandidateConnections(candidate.id).find((entry) => entry.companyId === "company-demo");
+    assert.equal(candidateConnection.status, "connected");
+    assert.match(candidateConnection.messages[0].body, /projetos de estudo/);
+
+    AuthService.logout();
+    await AuthService.login("teste.integracao@skillmatch.test", "Teste@1234", false, "candidate");
+    setDocument(dom, "painel.html");
+    await importPageModule("assets/js/pages/painel.js", "candidate-consent");
+    const invitee = UserService.listByRole("candidate").find((user) => user.email === "teste.integracao@skillmatch.test");
+    const demoCompanyOwnerId = PlatformService.getCompany("company-demo").ownerId;
+    assert.equal(PlatformService.getCandidateSettings(invitee.id).visibleToCompanies, false);
+    assert.equal(PlatformService.canCompanyViewCandidate("company-demo", invitee.id), false);
+    assert.equal(PlatformService.canCompanyViewContact("company-demo", invitee.id), false);
+    assert.throws(() => PlatformService.inviteCandidate("company-demo", demoCompanyOwnerId, invitee.id, "Convite enviado sem autorização explícita para o teste."), /não autorizou/i);
+    assert.throws(() => PlatformService.toggleSavedTalent("company-demo", demoCompanyOwnerId, invitee.id), /consentimento explícito/i);
+    click('#appNav [data-view="settings"]');
+    document.querySelector("#settingVisible").checked = true;
+    submit(document.querySelector('form[data-form="candidate-settings"]'));
+    assert.equal(PlatformService.getCandidateSettings(invitee.id).visibleToCompanies, true);
+    assert.equal(PlatformService.canCompanyViewCandidate("company-demo", invitee.id), true);
+    assert.equal(PlatformService.canCompanyViewContact("company-demo", invitee.id), false, "Consentimento para busca não libera contato sem candidatura ou conexão aceita.");
+
+    AuthService.logout();
+    await AuthService.login("empresa@skillmatch.com", "Skill@123", false, "company");
+    setDocument(dom, "painel.html");
+    await importPageModule("assets/js/pages/painel.js", "company-engagement");
+    click('#appNav [data-view="company-talent"]');
+    assert.ok(document.querySelector(`[data-action="view-candidate"][data-id="${candidate.id}"]`));
+    click(`#appContent [data-action="toggle-saved-talent"][data-id="${candidate.id}"]`);
+    assert.equal(PlatformService.isTalentSaved("company-demo", candidate.id), true);
+    click('#appNav [data-view="company-connections"]');
+    assert.match(document.querySelector("#appContent").textContent, /projetos de estudo/);
+    const messageForm = document.querySelector('#appContent form[data-form="connection-message"]');
+    messageForm.querySelector("textarea").value = "Obrigado por se apresentar. Vamos manter esta conversa demonstrativa por aqui.";
+    submit(messageForm);
+    assert.ok(PlatformService.getConnectionMessages(candidateConnection.id, "usr-demo-company").some((message) => message.body.includes("Obrigado por se apresentar")));
+
+    click('#appNav [data-view="company-talent"]');
+    assert.ok(document.querySelector(`#appContent [data-action="invite-candidate"][data-id="${invitee.id}"]`));
+    click(`#appContent [data-action="invite-candidate"][data-id="${invitee.id}"]`);
+    const inviteModal = document.querySelector("#appModalContent");
+    setValue("candidateInvitation", "Gostaríamos de convidar você para conhecer uma oportunidade demonstrativa na área administrativa.", inviteModal);
+    submit(inviteModal.querySelector('form[data-form="connection-invite"]'));
+    const demoInvite = PlatformService.getCompanyConnections("company-demo").find((entry) => entry.candidateId === invitee.id);
+    assert.equal(demoInvite.status, "pending");
+    assert.equal(PlatformService.canCompanyViewContact("company-demo", invitee.id), false);
+
+    AuthService.logout();
+    await AuthService.login("teste.integracao@skillmatch.test", "Teste@1234", false, "candidate");
+    setDocument(dom, "painel.html");
+    await importPageModule("assets/js/pages/painel.js", "candidate-invitation");
+    click('#appNav [data-view="connections"]');
+    assert.ok(document.querySelector(`[data-action="accept-connection"][data-id="${demoInvite.id}"]`));
+    click(`[data-action="accept-connection"][data-id="${demoInvite.id}"]`);
+    assert.equal(PlatformService.getConnection(demoInvite.id).status, "connected");
+    const acceptedMessageForm = document.querySelector(`#appContent form[data-form="connection-message"][data-connection-id="${demoInvite.id}"]`);
+    acceptedMessageForm.querySelector("textarea").value = "Confirmo o recebimento do convite e agradeço o contato demonstrativo.";
+    submit(acceptedMessageForm);
+    assert.ok(PlatformService.getConnectionMessages(demoInvite.id, invitee.id).length > 0);
+    assert.equal(PlatformService.canCompanyViewContact("company-demo", invitee.id), true);
+    click('#appNav [data-view="settings"]');
+    document.querySelector("#settingVisible").checked = false;
+    submit(document.querySelector('form[data-form="candidate-settings"]'));
+    assert.equal(PlatformService.canCompanyViewCandidate("company-demo", invitee.id), true, "A conexão aceita mantém o perfil acessível para a conversa.");
+    assert.equal(PlatformService.canCompanyViewContact("company-demo", invitee.id), false, "A revogação de visibilidade esconde o contato mesmo após a conexão.");
+    PlatformService.toggleFavorite(invitee.id, "job-demo-ti");
+    PlatformService.saveInterviewPractice(invitee.id, {
+      jobType: "Primeiro Emprego",
+      experienceLevel: "Primeira oportunidade",
+      question: "Conte sobre uma atividade em equipe.",
+      answer: "Organizei as tarefas em um projeto escolar e mantive o grupo atualizado sobre as etapas.",
+      feedback: { strengths: ["Exemplo concreto"] },
+    });
+    PlatformService.createReport(
+      { id: invitee.id, nome: "Teste Pessoa", role: "candidate" },
+      { category: "Contato inadequado", description: "Relato fictício para validar a limpeza de dados.", connectionId: demoInvite.id },
+    );
+    click('#appNav [data-view="settings"]');
+    assert.ok(document.querySelector('#appContent [data-action="delete-demo-account"]'));
+    click('#appContent [data-action="delete-demo-account"]');
+    click('#appModalContent [data-action="confirm-modal"]');
+    await waitFor(async () => (await UserService.getById(invitee.id)) === null && AuthService.getSession() === null, "A exclusão local da conta não foi concluída.");
+    assert.equal(await UserService.getById(invitee.id), null);
+    assert.equal(PlatformService.getConnection(demoInvite.id), null);
+    assert.equal(PlatformService.getCandidateConnections(invitee.id).length, 0);
+    assert.equal(PlatformService.getCandidateFavorites(invitee.id).length, 0);
+    assert.equal(PlatformService.getInterviewHistory(invitee.id).length, 0);
+    assert.equal(PlatformService.getReports().some((report) => report.userId === invitee.id), false);
+
+    await AuthService.login("empresa@skillmatch.com", "Skill@123", false, "company");
+    setDocument(dom, "painel.html");
+    await importPageModule("assets/js/pages/painel.js", "company-block-report");
+    click('#appNav [data-view="company-connections"]');
+    click(`#appContent [data-action="report-connection"][data-id="${candidateConnection.id}"]`);
+    const connectionReportForm = document.querySelector('#appModalContent form[data-form="report"]');
+    setValue("reportCategory", "Contato inadequado", connectionReportForm);
+    setValue("reportDescription", "Relato de demonstração associado à conversa autorizada.", connectionReportForm);
+    submit(connectionReportForm);
+    const connectionReport = PlatformService.getReports().find((report) => report.connectionId === candidateConnection.id);
+    assert.ok(connectionReport);
+    assert.equal(connectionReport.userId, "usr-demo-company");
+
+    click(`#appContent [data-action="block-connection"][data-id="${candidateConnection.id}"]`);
+    click('#appModalContent [data-action="confirm-modal"]');
+    await waitFor(() => PlatformService.getConnection(candidateConnection.id)?.status === "blocked", "A ação de bloqueio não foi aplicada.");
+    assert.throws(() => PlatformService.sendConnectionMessage(candidateConnection.id, "usr-demo-company", "Mensagem após bloqueio."), /após a conexão ser aceita/i);
+    assert.equal(document.querySelector(`#appContent form[data-form="connection-message"][data-connection-id="${candidateConnection.id}"]`), null);
+  });
+
   await t.test("administração administra contas, revisa vaga, anúncio e relato", async () => {
     AuthService.logout();
     await AuthService.login("admin@skillmatch.com", "Admin@123", false, "admin");
@@ -456,7 +591,7 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     assert.equal(PlatformService.getReports()[0].status, "Resolvido");
 
     click('#appNav [data-view="admin-candidates"]');
-    assert.ok(document.querySelectorAll("#adminCandidateResults tr").length >= 2);
+    assert.ok(document.querySelectorAll("#adminCandidateResults tr").length >= 1);
     click('#adminCandidateResults [data-action="toggle-candidate-status"][data-id="usr-demo-candidate"]');
     assert.equal((await UserService.getById("usr-demo-candidate")).status, "blocked");
     await assert.rejects(AuthService.login("mari.costa+teste@skillmatch.test", "SeguraNova@789", false, "candidate"), /bloqueada/i);

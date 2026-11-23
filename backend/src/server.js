@@ -6,6 +6,11 @@ import rateLimit from 'express-rate-limit';
 import cron from 'node-cron';
 import authRoutes from './routes/auth.js';
 import jobRoutes from './routes/jobs.js';
+import connectionRoutes from './routes/connections.js';
+import talentRoutes from './routes/talents.js';
+import interviewRoutes from './routes/interviews.js';
+import companyRoutes from './routes/companies.js';
+import notificationRoutes from './routes/notifications.js';
 import { getPool, closePool } from './services/db.js';
 import { searchAuthorizedProvider, upsertDiscoveredJobs } from './services/opportunity-search.js';
 
@@ -18,6 +23,11 @@ app.use(cors({ origin(origin, callback) { if (!origin || origins.includes(origin
 app.use(express.json({ limit: '100kb' }));
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false }), authRoutes);
 app.use('/api/jobs', jobRoutes);
+app.use('/api/companies', companyRoutes);
+app.use('/api/connections', connectionRoutes);
+app.use('/api/talents', talentRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/interviews', interviewRoutes);
 app.get('/api/health', async (_req, res) => {
   try { await getPool().query('SELECT 1'); res.json({ status: 'ok', database: 'connected' }); }
   catch { res.status(503).json({ status: 'degraded', database: 'unavailable' }); }

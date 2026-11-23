@@ -17,10 +17,13 @@ Candidato, empresa e administração mantêm os fluxos de cadastro/login/painel 
 - **Página pública (`index.html`)**: busca e filtro por cargo, empresa, requisito, cidade/UF e tipo; ordenação; detalhes e estados transparentes; menu responsivo; redirecionamento para cadastro/login ao tentar salvar/candidatar-se.
 - **Cadastro/login demonstrativos**: validação, senha derivada localmente, editar perfil, foto, cursos, experiências, interesses, disponibilidade e preferências; recuperação de senha gera código local e não envia e-mail.
 - **Painel do candidato**: início, vagas, Radar, candidaturas locais, currículo imprimível/exportável pela impressão do navegador, perfil, cursos/planejamento, notificações e configurações.
+- **Novos fluxos locais de engajamento**: favoritos; prática de entrevista contextual com respostas em texto, feedback acolhedor baseado em regras locais e histórico apagável; ditado opcional apenas quando o navegador oferece reconhecimento de fala. A prática do painel não usa IA nem decide aptidão.
+- **Conexões demonstrativas**: diretório e convites locais, mensagens apenas após aceite, histórico, bloqueio e denúncia. A exclusão da conta remove no navegador os dados associados e encerra a sessão. Candidato controla visibilidade; perfis começam ocultos até consentimento explícito. Contato fica oculto sem conexão autorizada ou candidatura e continua sujeito à preferência de privacidade. Nada é enviado a empresas reais.
+- **Banco de talentos local**: filtros por habilidade, escolaridade e cidade, lista salva pela empresa e consulta restrita aos perfis que autorizaram visibilidade. São dados de teste no navegador, não um serviço real.
 - **Radar local**: endereço de referência, cidade/UF, bairro/região, raio, tipo, área e modalidade são filtros persistidos neste navegador. O endereço é analisado localmente e reconhece sete centros urbanos do Paraná; o raio usa distância aproximada em linha reta entre centros, não o ponto exato da rua nem rota. Endereço não reconhecido deixa o raio sem aplicação, com aviso visível. Nenhum geocodificador externo ou mapa está conectado.
 - **Compatibilidade demonstrativa**: serviço local explica correspondência de habilidades, área, tipo, localização e escolaridade (incluindo nível e “em curso/concluído”). Sugestões podem variar diariamente e excluem oportunidades com interesse já registrado; o percentual não é IA nem chance de contratação.
 - **Empresa demonstrativa**: cadastro empresarial (`cadastro-empresa.html`) com validação dos dígitos verificadores do CNPJ (inclui formato alfanumérico), login, perfil, publicação/edição/pausa de vagas, consulta de candidaturas e alteração de status. CNPJ é armazenado localmente no modo demo; validar seus dígitos não confirma existência, situação cadastral nem titularidade. **Admin demonstrativo**: moderação, cadastros e relatos locais. Esses dados ficam no navegador e não são compartilhados; nenhuma vaga da conta de teste é divulgada como contratação real.
-- **API inicial (`backend/`)**: autenticação com bcrypt/JWT no servidor, validação, CORS, rate limit, consultas parametrizadas, API pública de vagas, candidatura autenticada, provedor de busca estruturado autorizado e agendamento opcional. Ela **não foi conectada às telas autenticadas do frontend**, nem testada com MySQL ou credenciais externas nesta sessão.
+- **API (`backend/`)**: autenticação com bcrypt/JWT, verificação do estado da conta nas requisições autenticadas, perfil/consentimento, candidaturas, conexões/mensagens autorizadas, banco de talentos e rota opcional de feedback por IA. Vagas, mensagens e perfis do painel visual ainda usam dados locais: **as telas autenticadas não foram conectadas a essas rotas**, e MySQL/credenciais externas não foram configurados nem testados.
 
 ## Executar o frontend estático
 
@@ -55,18 +58,21 @@ mysql -u root -p < sql/schema.sql
 npm start
 ```
 
-Se o banco já existia antes da coluna CNPJ, aplique uma vez `sql/migrations/001_company_cnpj.sql` (no diretório `backend/`) em vez de recriar o schema. A API escuta em `0.0.0.0:3000`. Verifique `GET /api/health`; serviços MySQL precisam estar disponíveis. Configure usuário MySQL com privilégios mínimos, HTTPS e segredos no gerenciador de variáveis do provedor de hospedagem — não publique `.env`.
+Para banco novo, `sql/schema.sql` cria a estrutura atual. Em banco que ainda não tem a coluna CNPJ, aplique **uma vez e nesta ordem** `sql/migrations/001_company_cnpj.sql` e `sql/migrations/002_connections_interviews.sql`; se o CNPJ já existe, aplique somente a migração 002. Não reaplique migrações nem use o schema-base sobre dados existentes. A migração 002 muda a visibilidade para privada, revoga o padrão permissivo legado (exigindo novo opt-in) e cria tabelas de favoritos, conexões, mensagens, notificações e entrevistas. Revise/backupeie antes de executar em produção. A API escuta em `0.0.0.0:3000`. Verifique `GET /api/health`; serviços MySQL precisam estar disponíveis. Configure usuário MySQL com privilégios mínimos, HTTPS e segredos no gerenciador de variáveis do provedor de hospedagem — não publique `.env`.
 
-Rotas atualmente implementadas:
+Rotas atualmente implementadas (servidor/API, não ligadas ao painel autenticado):
 
-- `POST /api/auth/register` e `/api/auth/login`; candidato ou empresa. Cadastro empresarial valida e exige CNPJ único (somente dígitos verificadores; sem consulta à Receita Federal). Senhas são armazenadas com bcrypt e sessões retornam JWT curto.
-- `GET /api/auth/me` autenticada.
-- `GET /api/jobs` para oportunidades ativas elegíveis, com status e origem.
-- `POST /api/jobs/discovery/search` para candidato autenticado, usando somente o provedor autorizado configurado.
-- `POST /api/jobs/:jobId/applications` e `GET /api/jobs/applications/mine` para candidatura/histórico.
+- `POST /api/auth/register` e `/api/auth/login`; candidato ou empresa. Cadastro empresarial valida e exige CNPJ único (dígitos verificadores, sem consulta à Receita Federal). Senhas usam bcrypt; sessões retornam JWT curto.
+- `GET /api/auth/me`; `GET /api/auth/profile` e `PATCH /api/auth/profile` para perfil próprio de candidato e consentimento `visibility` (privado por padrão).
+- `GET /api/jobs`, `POST /api/jobs/discovery/search`, `POST /api/jobs/:jobId/applications` e `GET /api/jobs/applications/mine`.
+- `GET /api/companies` lista empresas ativas com verificação registrada; `GET /api/companies/mine` retorna o perfil empresarial do titular.
+- `GET /api/connections`; `POST /api/connections` (candidato inicia conversa ou empresa envia convite); `PATCH /api/connections/:connectionId` para aceitar, recusar ou bloquear; `GET/POST /api/connections/:connectionId/messages`. Mensagens exigem conexão aceita; empresas precisam estar verificadas, e cada usuário só consulta conexões das quais participa.
+- `GET /api/talents`, `GET /api/talents/saved`, `GET /api/talents/:candidateId`, `POST/DELETE /api/talents/:candidateId/saved`. Somente empresa verificada pode buscar; perfis exigem consentimento e contato não é retornado sem autorização.
+- `GET /api/notifications`, `POST /api/notifications/read-all` e `PATCH /api/notifications/:id/read` para notificações da própria conta.
+- `GET /api/interviews/mine` e `POST /api/interviews/feedback`. A rota exige `consentToExternalProcessing: true`; só chama um provedor Chat Completions compatível se `AI_PROVIDER_URL`, `AI_PROVIDER_TOKEN` e `AI_PROVIDER_MODEL` estiverem configurados. Sem configuração retorna `503`; a resposta do provedor passa por validação estruturada. Esta rota de backend **não está conectada ao treino do painel**, que continua baseado em regras locais.
 - `GET /api/health`.
 
-Essa API é um ponto de partida, não uma implantação completa do produto: faltam, entre outros, administração operacional, gestão empresarial completa, revisão humana de fontes, recuperação por e-mail, sessão em cookie/CSRF, trilha de auditoria, integração de mapas, serviço de IA e integração do frontend autenticado. O cadastro de administrador deve ser provisionado fora da rota pública e protegido operacionalmente.
+A API segue parcial: ainda faltam administração operacional/moderação/relatos, gestão empresarial completa e ciclo de vida de vagas, notificações para todos os eventos, recuperação de senha por e-mail, sessão em cookie/CSRF, trilha de auditoria, exclusão de conta pela API, integração das telas autenticadas e teste com MySQL real. O cadastro de administrador deve ser provisionado fora da rota pública e protegido operacionalmente. O uso de IA remota exige revisão de privacidade, retenção e termos do fornecedor antes de produção.
 
 ### Ligar o catálogo público à API
 
@@ -84,7 +90,7 @@ Configure `SEARCH_PROVIDER_URL` e `SEARCH_PROVIDER_TOKEN` **no backend** com um 
 
 Para habilitar a sincronização programada, configure `DISCOVERY_CITIES=Curitiba:PR,Araucaria:PR` e `DISCOVERY_CRON` (cron timezone `America/Sao_Paulo`). A rotina só ativa quando URL e token do provedor também existem. Duplicatas são agrupadas por empresa/cargo/localidade; resultados sem confirmação mantêm status `unverified`; registros que o provedor declara encerrados viram `possibly_closed`. A veracidade depende do contrato e da qualidade do serviço externo, e a fonte original é preservada.
 
-Não há integração com Google Maps, Google Search API ou API de IA ativada. Nenhuma chave fica no código público.
+Não há integração com Google Maps ou Google Search API. A rota de IA é opcional, não configurada por padrão e não conectada ao painel; se habilitada, encaminha resposta e habilidades do candidato ao fornecedor após consentimento explícito. Nenhuma chave fica no código público.
 
 ## Testes
 
@@ -93,7 +99,7 @@ npm ci
 npm test
 ```
 
-Os testes automatizados cobrem cadastro/login/recuperação, validação de CNPJ (incluindo dígitos inválidos), fluxos de perfil, painel, vagas, Radar, empresas/admin e navegação, além de busca/filtro/modal da página pública, compatibilidade de habilidades/escolaridade, variação de recomendações e distâncias do Radar. São testes Node/JSDOM, não equivalem a teste visual em navegadores/dispositivos nem validam serviço MySQL real. Nesta sessão: **24 testes passaram**. A sintaxe dos módulos do backend foi verificada e `npm audit` do backend não reportou vulnerabilidades após atualizar as dependências.
+Os testes de frontend cobrem cadastro/login/recuperação, CNPJ numérico/alfanumérico, painel e navegação, favoritos, consentimento de perfil, mensagens/convites, denúncia/bloqueio, histórico de entrevista, limpeza local de dados, empresa/admin, Radar e página pública. Rode `npm test` na raiz. No backend, `cd backend && npm test` verifica o consentimento exigido e o serviço de feedback IA com provedor simulado, ausência de configuração, formato inválido e HTTPS; não chama serviço externo. Nesta revisão: **26 testes do frontend e 5 do backend passaram**; `node --check` e `git diff --check` também passaram. `npm ci` no backend reportou 0 vulnerabilidades. JSDOM não é teste visual em navegadores/dispositivos, e nenhuma rota foi validada contra um MySQL real.
 
 ## Estrutura
 

@@ -127,6 +127,9 @@ export const UserService = {
 
   async deleteAccount(userId, token = null) {
     if (APP_CONFIG.useApi) return ApiService.delete("/candidatos/me", token);
+    if (!getUsers().some((entry) => entry.id === userId)) throw new Error("Conta não encontrada.");
+    const { PlatformService } = await import("./platform.service.js");
+    PlatformService.removeUserData(userId);
     saveUsers(getUsers().filter((entry) => entry.id !== userId));
   },
 

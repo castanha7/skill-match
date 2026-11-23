@@ -148,10 +148,15 @@ const DEMO_JOBS = [
 ];
 
 const EMPTY_STATE = () => ({
-  version: 1,
+  version: 2,
   companies: [],
   jobs: [],
   applications: [],
+  favorites: [],
+  connections: [],
+  messages: [],
+  savedTalents: [],
+  interviewHistory: [],
   notifications: [],
   preferences: {},
   reports: [],
@@ -188,6 +193,39 @@ function addNotification(state, userId, { title, message, targetView = "notifica
   });
 }
 
+function connectionCompany(state, connection) {
+  return state.companies.find((company) => company.id === connection.companyId) || null;
+}
+
+function isConnectionParticipant(state, connection, userId) {
+  return Boolean(connection && (connection.candidateId === userId || connectionCompany(state, connection)?.ownerId === userId));
+}
+
+function appendConnectionMessage(state, connection, senderId, body) {
+  const company = connectionCompany(state, connection);
+  const recipientId = senderId === connection.candidateId ? company?.ownerId : connection.candidateId;
+  if (!recipientId) throw new Error("Não há uma conta ativa para receber esta mensagem.");
+  const message = {
+    id: id("message"),
+    connectionId: connection.id,
+    senderId,
+    recipientId,
+    body: String(body).trim().slice(0, 2000),
+    read: false,
+    createdAt: new Date().toISOString(),
+    isDemo: true,
+  };
+  state.messages.push(message);
+  addNotification(state, recipientId, {
+    title: "Nova mensagem demonstrativa",
+    message: `Você recebeu uma mensagem sobre uma conexão com ${company?.name || "uma empresa"}.`,
+    targetView: "connections",
+    type: "message",
+    linkId: connection.id,
+  });
+  return { ...message };
+}
+
 function addUniqueJobNotification(state, candidateId, job) {
   const title = "Nova oportunidade demonstrativa";
   const message = `${job.title} foi aprovada para aparecer no catálogo de demonstração. Não é uma vaga real.`;
@@ -206,13 +244,21 @@ function addUniqueJobNotification(state, candidateId, job) {
 
 function ensureState() {
   const stored = StorageService.get(DATA_KEY);
-  const state = stored && stored.version === 1 ? stored : EMPTY_STATE();
-  for (const key of ["companies", "jobs", "applications", "notifications", "reports", "ads"]) {
+  const state = stored && [1, 2].includes(stored.version) ? stored : EMPTY_STATE();
+  const migrateLegacyConsent = Boolean(stored && stored.version === 1);
+  for (const key of ["companies", "jobs", "applications", "favorites", "connections", "messages", "savedTalents", "interviewHistory", "notifications", "reports", "ads"]) {
     if (!Array.isArray(state[key])) state[key] = [];
   }
-  let changed = !stored || stored.version !== 1;
+  let changed = !stored || stored.version !== 2;
   if (!state.preferences || typeof state.preferences !== "object") {
     state.preferences = {};
+    changed = true;
+  }
+  if (migrateLegacyConsent) {
+    Object.values(state.preferences).forEach((preference) => {
+      if (preference && typeof preference === "object") preference.visibleToCompanies = false;
+    });
+    state.version = 2;
     changed = true;
   }
 
@@ -225,8 +271,9 @@ function ensureState() {
     }
   });
   const demoCompany = state.companies.find((company) => company.id === "company-demo");
-  if (demoCompany && companyUser && demoCompany.ownerId !== companyUser.id) {
-    demoCompany.ownerId = companyUser.id;
+  const expectedDemoOwnerId = companyUser?.id || "";
+  if (demoCompany && demoCompany.ownerId !== expectedDemoOwnerId) {
+    demoCompany.ownerId = expectedDemoOwnerId;
     changed = true;
   }
   DEMO_JOBS.forEach((job) => {
@@ -247,7 +294,7 @@ function ensureState() {
         changed = true;
       }
       if (!state.preferences[user.id]) {
-        state.preferences[user.id] = { distanceMaxKm: 50, visibleToCompanies: true, notifyNewJobs: true };
+        state.preferences[user.id] = { distanceMaxKm: 50, visibleToCompanies: false, notifyNewJobs: true };
         changed = true;
       }
     });
@@ -562,6 +609,266 @@ export const PlatformService = {
     });
   },
 
+  isFavorite(candidateId, jobId) {
+    return ensureState().favorites.some((favorite) => favorite.candidateId === candidateId && favorite.jobId === jobId);
+  },
+
+  getCandidateFavorites(candidateId) {
+    const state = ensureState();
+    return state.favorites
+      .filter((favorite) => favorite.candidateId === candidateId)
+      .map((favorite) => ({ ...favorite, job: state.jobs.find((job) => job.id === favorite.jobId) || null }))
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  },
+
+  toggleFavorite(candidateId, jobId) {
+    return update((state) => {
+      if (!UserService.listByRole("candidate").some((candidate) => candidate.id === candidateId)) throw new Error("Conta de candidato não encontrada.");
+      if (!state.jobs.some((job) => job.id === jobId)) throw new Error("Esta vaga não está disponível para salvar.");
+      const index = state.favorites.findIndex((favorite) => favorite.candidateId === candidateId && favorite.jobId === jobId);
+      if (index >= 0) {
+        state.favorites.splice(index, 1);
+        return false;
+      }
+      state.favorites.push({ candidateId, jobId, createdAt: new Date().toISOString(), isDemo: true });
+      return true;
+    });
+  },
+
+  saveInterviewPractice(candidateId, practice) {
+    return update((state) => {
+      if (!UserService.listByRole("candidate").some((candidate) => candidate.id === candidateId)) throw new Error("Conta de candidato não encontrada.");
+      const question = String(practice.question ?? "").trim().slice(0, 500);
+      const answer = String(practice.answer ?? "").trim().slice(0, 2000);
+      if (!question || answer.length < 10) throw new Error("Escreva uma resposta com pelo menos 10 caracteres.");
+      const entry = {
+        id: id("interview"),
+        candidateId,
+        jobType: String(practice.jobType ?? "").trim().slice(0, 80),
+        experienceLevel: String(practice.experienceLevel ?? "").trim().slice(0, 80),
+        targetRole: String(practice.targetRole ?? "").trim().slice(0, 120),
+        questionId: String(practice.questionId ?? "").trim().slice(0, 80),
+        question,
+        answer,
+        feedback: clone(practice.feedback || {}),
+        createdAt: new Date().toISOString(),
+        provider: "guided-demo",
+        isDemo: true,
+      };
+      state.interviewHistory.unshift(entry);
+      const retainedIds = new Set(state.interviewHistory.filter((item) => item.candidateId === candidateId).slice(0, 30).map((item) => item.id));
+      state.interviewHistory = state.interviewHistory.filter((item) => item.candidateId !== candidateId || retainedIds.has(item.id));
+      return clone(entry);
+    });
+  },
+
+  getInterviewHistory(candidateId) {
+    return ensureState().interviewHistory
+      .filter((entry) => entry.candidateId === candidateId)
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
+      .map((entry) => clone(entry));
+  },
+
+  deleteInterviewPractice(interviewId, candidateId) {
+    return update((state) => {
+      const before = state.interviewHistory.length;
+      state.interviewHistory = state.interviewHistory.filter((entry) => !(entry.id === interviewId && entry.candidateId === candidateId));
+      return state.interviewHistory.length !== before;
+    });
+  },
+
+  getCandidateConnections(candidateId) {
+    const state = ensureState();
+    return state.connections
+      .filter((connection) => connection.candidateId === candidateId)
+      .map((connection) => ({
+        ...connection,
+        company: connectionCompany(state, connection),
+        messages: state.messages.filter((message) => message.connectionId === connection.id).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).map((message) => ({ ...message })),
+      }))
+      .sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)));
+  },
+
+  getCompanyConnections(companyId) {
+    const state = ensureState();
+    return state.connections
+      .filter((connection) => connection.companyId === companyId)
+      .map((connection) => ({
+        ...connection,
+        company: connectionCompany(state, connection),
+        candidate: UserService.listByRole("candidate").find((candidate) => candidate.id === connection.candidateId) || null,
+        messages: state.messages.filter((message) => message.connectionId === connection.id).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))).map((message) => ({ ...message })),
+      }))
+      .sort((a, b) => String(b.updatedAt || b.createdAt).localeCompare(String(a.updatedAt || a.createdAt)));
+  },
+
+  getConnection(connectionId) {
+    const state = ensureState();
+    const connection = state.connections.find((entry) => entry.id === connectionId);
+    return connection ? { ...connection, company: connectionCompany(state, connection) } : null;
+  },
+
+  startCandidateConnection(companyId, candidateId, presentation) {
+    return update((state) => {
+      const company = state.companies.find((entry) => entry.id === companyId && entry.active !== false && entry.ownerId);
+      const candidate = UserService.listByRole("candidate").find((entry) => entry.id === candidateId && entry.status === "active");
+      const body = String(presentation ?? "").trim();
+      if (!company || !candidate) throw new Error("Empresa ou conta de candidato indisponível.");
+      if (body.length < 10 || body.length > 1200) throw new Error("Escreva uma apresentação entre 10 e 1.200 caracteres.");
+      const existing = state.connections.find((entry) => entry.companyId === companyId && entry.candidateId === candidateId);
+      if (existing) {
+        if (existing.status === "connected") throw new Error("Esta conexão já está aberta.");
+        if (existing.status === "pending") throw new Error("Responda ao convite pendente antes de iniciar outra conexão.");
+        throw new Error("Esta conexão está encerrada ou bloqueada.");
+      }
+      const now = new Date().toISOString();
+      const connection = { id: id("connection"), companyId, candidateId, initiatedBy: "candidate", status: "connected", createdAt: now, updatedAt: now, acceptedAt: now, isDemo: true };
+      state.connections.unshift(connection);
+      appendConnectionMessage(state, connection, candidateId, body);
+      return { ...connection };
+    });
+  },
+
+  inviteCandidate(companyId, ownerId, candidateId, invitationMessage) {
+    return update((state) => {
+      const company = state.companies.find((entry) => entry.id === companyId && entry.ownerId === ownerId && entry.active !== false);
+      const candidate = UserService.listByRole("candidate").find((entry) => entry.id === candidateId && entry.status === "active");
+      const preference = state.preferences[candidateId] || {};
+      const note = String(invitationMessage ?? "").trim();
+      if (!company || !candidate) throw new Error("Conta empresarial ou perfil de candidato indisponível.");
+      if (preference.visibleToCompanies !== true) throw new Error("Este candidato não autorizou aparecer no banco de talentos.");
+      if (note.length < 10 || note.length > 1200) throw new Error("Escreva um convite entre 10 e 1.200 caracteres.");
+      if (state.connections.some((entry) => entry.companyId === companyId && entry.candidateId === candidateId)) throw new Error("Já existe uma conexão ou convite para este perfil.");
+      const now = new Date().toISOString();
+      const connection = {
+        id: id("connection"), companyId, candidateId, initiatedBy: "company", status: "pending",
+        invitationMessage: note, createdAt: now, updatedAt: now, isDemo: true,
+      };
+      state.connections.unshift(connection);
+      addNotification(state, candidateId, {
+        title: "Convite de empresa demonstrativo",
+        message: `${company.name} enviou um convite. Aceite antes de abrir uma conversa; você pode recusar sem compartilhar contato.`,
+        targetView: "connections", type: "connection", linkId: connection.id,
+      });
+      return { ...connection };
+    });
+  },
+
+  respondToConnection(connectionId, candidateId, accept) {
+    return update((state) => {
+      const connection = state.connections.find((entry) => entry.id === connectionId && entry.candidateId === candidateId);
+      if (!connection || connection.status !== "pending" || connection.initiatedBy !== "company") throw new Error("Este convite não está mais disponível.");
+      connection.status = accept ? "connected" : "declined";
+      connection.updatedAt = new Date().toISOString();
+      if (accept) connection.acceptedAt = connection.updatedAt;
+      const company = connectionCompany(state, connection);
+      addNotification(state, company?.ownerId, {
+        title: accept ? "Convite aceito" : "Convite recusado",
+        message: `${UserService.listByRole("candidate").find((candidate) => candidate.id === candidateId)?.nome || "O candidato"} ${accept ? "aceitou" : "recusou"} o convite de conexão.`,
+        targetView: "company-connections", type: "connection", linkId: connection.id,
+      });
+      return { ...connection };
+    });
+  },
+
+  getConnectionMessages(connectionId, userId) {
+    const state = ensureState();
+    const connection = state.connections.find((entry) => entry.id === connectionId);
+    if (!connection || !isConnectionParticipant(state, connection, userId)) throw new Error("Conversa não encontrada para esta conta.");
+    return state.messages
+      .filter((message) => message.connectionId === connectionId)
+      .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
+      .map((message) => ({ ...message }));
+  },
+
+  sendConnectionMessage(connectionId, senderId, text) {
+    return update((state) => {
+      const connection = state.connections.find((entry) => entry.id === connectionId);
+      const body = String(text ?? "").trim();
+      if (!connection || !isConnectionParticipant(state, connection, senderId)) throw new Error("Conversa não encontrada para esta conta.");
+      if (connection.status !== "connected") throw new Error("Só é possível conversar após a conexão ser aceita.");
+      if (body.length < 1 || body.length > 2000) throw new Error("A mensagem deve ter entre 1 e 2.000 caracteres.");
+      const message = appendConnectionMessage(state, connection, senderId, body);
+      connection.updatedAt = message.createdAt;
+      return message;
+    });
+  },
+
+  markConnectionMessagesRead(connectionId, userId) {
+    return update((state) => {
+      const connection = state.connections.find((entry) => entry.id === connectionId);
+      if (!connection || !isConnectionParticipant(state, connection, userId)) throw new Error("Conversa não encontrada para esta conta.");
+      state.messages.filter((message) => message.connectionId === connectionId && message.recipientId === userId && !message.read)
+        .forEach((message) => { message.read = true; message.readAt = new Date().toISOString(); });
+    });
+  },
+
+  getUnreadMessageCount(userId) {
+    return ensureState().messages.filter((message) => message.recipientId === userId && !message.read).length;
+  },
+
+  blockConnection(connectionId, userId) {
+    return update((state) => {
+      const connection = state.connections.find((entry) => entry.id === connectionId);
+      if (!connection || !isConnectionParticipant(state, connection, userId)) throw new Error("Conversa não encontrada para esta conta.");
+      if (connection.status === "blocked") return { ...connection };
+      connection.status = "blocked";
+      connection.blockedBy = userId;
+      connection.updatedAt = new Date().toISOString();
+      const other = userId === connection.candidateId ? connectionCompany(state, connection)?.ownerId : connection.candidateId;
+      addNotification(state, other, { title: "Conexão encerrada", message: "A outra parte encerrou esta conexão demonstrativa.", targetView: "connections", type: "connection", linkId: connection.id });
+      return { ...connection };
+    });
+  },
+
+  hasCandidateAppliedToCompany(companyId, candidateId) {
+    const state = ensureState();
+    const companyJobIds = new Set(state.jobs.filter((job) => job.companyId === companyId).map((job) => job.id));
+    return state.applications.some((application) => application.candidateId === candidateId && companyJobIds.has(application.jobId));
+  },
+
+  canCompanyViewCandidate(companyId, candidateId) {
+    const state = ensureState();
+    const preference = state.preferences[candidateId] || {};
+    const connection = state.connections.find((entry) => entry.companyId === companyId && entry.candidateId === candidateId);
+    if (connection?.status === "blocked") return false;
+    return preference.visibleToCompanies === true
+      || this.hasCandidateAppliedToCompany(companyId, candidateId)
+      || connection?.status === "connected";
+  },
+
+  canCompanyViewContact(companyId, candidateId) {
+    const state = ensureState();
+    if (state.preferences[candidateId]?.visibleToCompanies !== true) return false;
+    const connection = state.connections.find((entry) => entry.companyId === companyId && entry.candidateId === candidateId);
+    if (connection?.status === "blocked") return false;
+    return connection?.status === "connected" || this.hasCandidateAppliedToCompany(companyId, candidateId);
+  },
+
+  isTalentSaved(companyId, candidateId) {
+    return ensureState().savedTalents.some((entry) => entry.companyId === companyId && entry.candidateId === candidateId);
+  },
+
+  getSavedTalentIds(companyId) {
+    return ensureState().savedTalents.filter((entry) => entry.companyId === companyId).map((entry) => entry.candidateId);
+  },
+
+  toggleSavedTalent(companyId, ownerId, candidateId) {
+    return update((state) => {
+      const company = state.companies.find((entry) => entry.id === companyId && entry.ownerId === ownerId);
+      if (!company) throw new Error("Esta conta não pode gerenciar a lista de talentos.");
+      const index = state.savedTalents.findIndex((entry) => entry.companyId === companyId && entry.candidateId === candidateId);
+      if (index >= 0) {
+        state.savedTalents.splice(index, 1);
+        return false;
+      }
+      const candidate = UserService.listByRole("candidate").find((entry) => entry.id === candidateId && entry.status === "active");
+      if (!candidate || state.preferences[candidateId]?.visibleToCompanies !== true) throw new Error("Este perfil não está disponível no banco de talentos sem consentimento explícito.");
+      state.savedTalents.push({ companyId, candidateId, createdAt: new Date().toISOString(), isDemo: true });
+      return true;
+    });
+  },
+
   getCandidateApplications(candidateId) {
     const state = ensureState();
     return state.applications
@@ -663,7 +970,7 @@ export const PlatformService = {
 
   getCandidateSettings(userId) {
     const settings = ensureState().preferences[userId];
-    return { distanceMaxKm: 50, visibleToCompanies: true, notifyNewJobs: true, radarAddress: "", radarCity: "", radarState: "", radarNeighborhood: "", radarType: "", radarArea: "", radarModality: "", ...(settings || {}) };
+    return { distanceMaxKm: 50, visibleToCompanies: false, notifyNewJobs: true, radarAddress: "", radarCity: "", radarState: "", radarNeighborhood: "", radarType: "", radarArea: "", radarModality: "", ...(settings || {}) };
   },
 
   saveCandidateSettings(userId, settings) {
@@ -696,7 +1003,7 @@ export const PlatformService = {
 
   setCourseProgress(userId, courseId, action) {
     return update((state) => {
-      const preferences = state.preferences[userId] || { distanceMaxKm: 50, visibleToCompanies: true, notifyNewJobs: true };
+      const preferences = state.preferences[userId] || { distanceMaxKm: 50, visibleToCompanies: false, notifyNewJobs: true };
       preferences.plannedCourses = Array.isArray(preferences.plannedCourses) ? preferences.plannedCourses : [];
       preferences.completedCourses = Array.isArray(preferences.completedCourses) ? preferences.completedCourses : [];
       const remove = (list) => { const index = list.indexOf(courseId); if (index >= 0) list.splice(index, 1); };
@@ -801,6 +1108,7 @@ export const PlatformService = {
         role: user.role,
         category: String(fields.category ?? "Dúvida"),
         description: String(fields.description ?? "").trim(),
+        connectionId: String(fields.connectionId ?? "").trim() || null,
         status: "Aberto",
         createdAt: new Date().toISOString(),
         isDemo: true,
@@ -832,9 +1140,24 @@ export const PlatformService = {
 
   removeUserData(userId) {
     return update((state) => {
-      state.notifications = state.notifications.filter((notification) => notification.userId !== userId);
-      state.applications = state.applications.filter((application) => application.candidateId !== userId);
+      const ownedCompanyIds = new Set(state.companies.filter((company) => company.ownerId === userId).map((company) => company.id));
+      const seededJobIds = new Set(DEMO_JOBS.map((job) => job.id));
+      const removedJobIds = new Set(state.jobs
+        .filter((job) => ownedCompanyIds.has(job.companyId) && !seededJobIds.has(job.id))
+        .map((job) => job.id));
+      const removedConnections = new Set(state.connections
+        .filter((connection) => connection.candidateId === userId || ownedCompanyIds.has(connection.companyId))
+        .map((connection) => connection.id));
+      state.notifications = state.notifications.filter((notification) => notification.userId !== userId && !removedJobIds.has(notification.linkId));
+      state.applications = state.applications.filter((application) => application.candidateId !== userId && !removedJobIds.has(application.jobId));
+      state.favorites = state.favorites.filter((favorite) => favorite.candidateId !== userId && !removedJobIds.has(favorite.jobId));
+      state.connections = state.connections.filter((connection) => !removedConnections.has(connection.id));
+      state.messages = state.messages.filter((message) => !removedConnections.has(message.connectionId) && message.senderId !== userId && message.recipientId !== userId);
+      state.savedTalents = state.savedTalents.filter((entry) => entry.candidateId !== userId && !ownedCompanyIds.has(entry.companyId));
+      state.interviewHistory = state.interviewHistory.filter((entry) => entry.candidateId !== userId);
       state.reports = state.reports.filter((report) => report.userId !== userId);
+      state.jobs = state.jobs.filter((job) => !removedJobIds.has(job.id));
+      state.companies = state.companies.filter((company) => !ownedCompanyIds.has(company.id) || company.id === "company-demo");
       delete state.preferences[userId];
     });
   },
