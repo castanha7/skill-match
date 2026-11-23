@@ -2,6 +2,7 @@ import { $, $$, setFieldError, clearFieldError, bindAutoClear, showToast } from 
 import { Validators } from "../utils/validators.js";
 import { AuthService } from "../services/auth.service.js";
 import { initPasswordToggles } from "../components/password-toggle.js";
+import { safeReturnPath } from "../utils/navigation.js";
 
 const form = $("#loginForm");
 const emailInput = $("#email");
@@ -36,11 +37,14 @@ try {
 }
 
 initPasswordToggles();
-if (AuthService.isAuthenticated()) window.location.replace("painel.html");
+const params = new URLSearchParams(window.location.search);
+const requestedDestination = safeReturnPath(params.get("redirect") || params.get("next"), window.location.href);
+if (AuthService.isAuthenticated()) {
+  const session = AuthService.getSession();
+  window.location.replace(session?.role === "candidate" ? requestedDestination : "painel.html");
+}
 
 [emailInput, senhaInput, resetEmailInput, resetCodeInput, resetPasswordInput, resetConfirmInput].forEach(bindAutoClear);
-
-const params = new URLSearchParams(window.location.search);
 if (["candidate", "company", "admin"].includes(params.get("role"))) roleInput.value = params.get("role");
 if (params.get("cadastrado")) {
   showAlert(alertSuccess, "#loginSuccessText", "Conta criada. Entre para continuar no SkillMatch.");
@@ -171,8 +175,8 @@ form.addEventListener("submit", async (event) => {
   loginButton.disabled = true;
   loginButton.innerHTML = '<span class="spinner"></span><span>Validando acesso...</span>';
   try {
-    await AuthService.login(emailInput.value, senhaInput.value, lembrarMeInput.checked, roleInput.value);
-    window.location.replace("painel.html");
+    const user = await AuthService.login(emailInput.value, senhaInput.value, lembrarMeInput.checked, roleInput.value);
+    window.location.replace(user.role === "candidate" ? requestedDestination : "painel.html");
   } catch (error) {
     showAlert(alertError, "#loginAlertText", error.message);
     loginButton.disabled = false;

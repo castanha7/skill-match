@@ -71,7 +71,7 @@ Para completar essa migração, criar um serviço de sessão HTTPOnly/CSRF, adap
 - Implementar validação/verificação de empresas, revisão humana, denúncias e decisões de publicação.
 - Implementar propriedade do recurso para todas as rotas futuras, paginação, limites, proteção de arquivos/currículos e política de retenção/exclusão.
 - Configurar serviço de busca autorizado, teste de disponibilidade, observabilidade e limite de custo. A chave nunca vai ao frontend.
-- Google Maps/alternativa: geocodificação e distância/rota devem ser solicitadas pelo backend, com chaves restritas, consentimento, cache e cota. A distância atual do painel é uma estimativa em linha reta entre alguns centros urbanos hardcoded.
+- Google Maps/alternativa: geocodificação precisa e distância/rota devem ser solicitadas pelo backend, com chaves restritas, consentimento, cache e cota. O Radar demonstrativo aceita endereço de referência sem enviá-lo a terceiros, mas só reconhece sete cidades do Paraná e estima a distância em linha reta entre centros urbanos; não calcula rua, CEP ou rota. Endereço não reconhecido não aplica o raio, e a interface avisa isso.
 - IA: não conectada. Um serviço futuro deve explicar sinais e lacunas, evitar inferir atributos sensíveis, permitir revisão e nunca apresentar percentual como chance de contratação. A compatibilidade do protótipo é regra determinística local.
 - Criar testes de integração com MySQL/API simulada e testes de autorização (candidato não lê outro currículo, empresa não altera vaga alheia, admin isolado) antes da publicação.
 

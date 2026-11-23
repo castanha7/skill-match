@@ -186,6 +186,22 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     change(document.querySelector("#radarType"));
     assert.equal(PlatformService.getCandidateSettings("usr-demo-candidate").radarType, "Jovem Aprendiz");
 
+    setValue("radarCity", "");
+    change(document.querySelector("#radarCity"));
+    setValue("radarType", "");
+    change(document.querySelector("#radarType"));
+    setValue("radarAddress", "Rua das Flores, Centro, Araucária - PR");
+    submit(document.querySelector('form[data-form="radar-address"]'));
+    assert.equal(PlatformService.getCandidateSettings("usr-demo-candidate").radarAddress, "Rua das Flores, Centro, Araucária - PR");
+    setValue("radarRadius", "10");
+    change(document.querySelector("#radarRadius"));
+    assert.equal(document.querySelectorAll("#appContent .job-card").length, 1);
+    assert.match(document.querySelector("#appContent").textContent, /Raio de até 10 km aplicado/);
+    setValue("radarAddress", "Rua sem cidade reconhecida, 10");
+    submit(document.querySelector('form[data-form="radar-address"]'));
+    assert.match(document.querySelector("#appContent").textContent, /Endereço não reconhecido.*raio não foi aplicado/i);
+    assert.equal(document.querySelectorAll("#appContent .job-card").length, 4);
+
     click('#appNav [data-view="jobs"]');
     assert.equal(document.querySelectorAll("#jobResults .job-card").length, 4);
     setValue("jobSearch", "logística");
@@ -210,6 +226,12 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     assert.equal(document.querySelectorAll("#jobResults .job-card").length, 0);
     click('#pageHeader [data-action="clear-job-filters"]');
     assert.equal(document.querySelectorAll("#jobResults .job-card").length, 4);
+
+    click('#appNav [data-view="home"]');
+    const recommendationSection = [...document.querySelectorAll("#appContent .panel-card")]
+      .find((card) => card.querySelector("h2")?.textContent === "Oportunidades recomendadas");
+    assert.ok(recommendationSection);
+    assert.doesNotMatch(recommendationSection.textContent, /Auxiliar de logística/);
 
     click('#appNav [data-view="applications"]');
     assert.match(document.querySelector("#appContent").textContent, /Minhas candidaturas|Interesses registrados/);
@@ -386,6 +408,8 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
 
     click('#appNav [data-view="admin-jobs"]');
     const job = PlatformService.getCompanyJobs("company-demo").find((entry) => entry.title.includes("qualidade"));
+    const candidatePreferences = PlatformService.getCandidateSettings("usr-demo-candidate");
+    PlatformService.saveCandidateSettings("usr-demo-candidate", { ...candidatePreferences, notifyNewJobs: true });
     const approve = document.querySelector(`[data-action="toggle-job-approval"][data-id="${job.id}"]`);
     click(approve);
     assert.equal(PlatformService.getPublishedJobs().some((entry) => entry.id === job.id), true);
@@ -393,6 +417,9 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     assert.equal(PlatformService.getPublishedJobs().some((entry) => entry.id === job.id), false);
     click(`#appContent [data-action="toggle-job-approval"][data-id="${job.id}"]`);
     assert.equal(PlatformService.getPublishedJobs().some((entry) => entry.id === job.id), true);
+    const jobNotifications = PlatformService.getCandidateNotifications("usr-demo-candidate")
+      .filter((notification) => notification.type === "job" && notification.linkId === job.id);
+    assert.equal(jobNotifications.length, 1, "A mesma aprovação não deve gerar avisos duplicados para a oportunidade.");
 
     click('#appNav [data-view="admin-companies"]');
     click('[data-action="toggle-company-verification"][data-id="company-demo"]');

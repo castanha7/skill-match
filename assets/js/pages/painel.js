@@ -5,6 +5,7 @@ import { APP_CONFIG, CATALOGS, USER_ROLES } from "../config/app.config.js";
 import { AuthService } from "../services/auth.service.js";
 import { UserService } from "../services/user.service.js";
 import { PlatformService } from "../services/platform.service.js";
+import { MatchService } from "../services/match.service.js";
 
 const appNav = $("#appNav");
 const appContent = $("#appContent");
@@ -182,47 +183,29 @@ function companyName(companyId) {
   return PlatformService.getCompany(companyId)?.name || "Empresa demonstrativa";
 }
 
+function radarDistanceOrigin(candidate) {
+  const address = candidate?.id ? PlatformService.getCandidateSettings(candidate.id).radarAddress : "";
+  return address ? { address } : candidate;
+}
+
 function distanceLabel(candidate, place) {
-  const distance = PlatformService.distanceEstimate(candidate, place);
+  const origin = session?.role === "candidate" && currentView === "radar" ? radarDistanceOrigin(candidate) : candidate;
+  const distance = PlatformService.distanceEstimate(origin, place);
   return distance === null ? "Distância não calculada" : `≈ ${distance} km entre centros urbanos · demo`;
 }
 
 function jobScore(job, candidate) {
-  const requirements = Array.isArray(job.requirements) ? job.requirements : [];
-  const candidateSkills = (candidate.habilidades || []).map(normalizedText);
-  const overlap = requirements.filter((skill) => candidateSkills.includes(normalizedText(skill))).length;
-  let score = 15;
-  if (candidate.areaInteresse && normalizedText(candidate.areaInteresse) === normalizedText(job.area)) score += 24;
-  else if (candidate.areaInteresse && normalizedText(candidate.areaInteresse).includes(normalizedText(job.area).slice(0, 7))) score += 10;
-  if ((candidate.tiposVaga || []).some((type) => normalizedText(type) === normalizedText(job.type))) score += 17;
-  if (requirements.length) score += Math.round((overlap / requirements.length) * 32);
-  if (candidate.escolaridade && job.education && normalizedText(candidate.escolaridade).split(" ").some((part) => part.length > 4 && normalizedText(job.education).includes(part))) score += 8;
-  if (candidate.cidade && normalizedText(candidate.cidade) === normalizedText(job.city) && candidate.estado === job.state) score += 10;
-  else if (candidate.estado && candidate.estado === job.state) score += 4;
-  return Math.max(10, Math.min(99, score));
+  return MatchService.score(candidate, job).percentage;
 }
 
 function explainJobMatch(job, candidate) {
-  const requirements = Array.isArray(job.requirements) ? job.requirements : [];
-  const skills = new Set((candidate.habilidades || []).map(normalizedText));
-  const matched = requirements.filter((item) => skills.has(normalizedText(item)));
-  const missing = requirements.filter((item) => !skills.has(normalizedText(item)));
-  const reasons = [];
-  if (candidate.areaInteresse && normalizedText(candidate.areaInteresse) === normalizedText(job.area)) reasons.push(`a área de interesse (${job.area}) combina com a vaga`);
-  if ((candidate.tiposVaga || []).some((type) => normalizedText(type) === normalizedText(job.type))) reasons.push(`o tipo de oportunidade (${job.type}) está entre suas preferências`);
-  if (matched.length) reasons.push(`você já cadastrou ${matched.length} requisito(s) pedido(s)`);
-  if (candidate.estado && candidate.estado === job.state) reasons.push(`a vaga está no mesmo estado do seu perfil (${job.state})`);
-  if (!reasons.length) reasons.push("a vaga foi incluída para você explorar; atualize habilidades e interesses para uma estimativa mais útil");
-  const improvement = missing.length
-    ? `Você pode desenvolver: ${missing.join(", ")}. Procure cursos, projetos escolares ou atividades práticas relacionadas.`
-    : "Seus requisitos listados já estão no perfil. Destaque-os com exemplos concretos em projetos, cursos ou atividades.";
-  return { matched, missing, reasons, improvement };
-}
-
-function candidateJobMeta(job) {
+  const match = MatchService.score(candidate, job);
   return {
-    score: jobScore(job, currentUser),
-    distance: PlatformService.distanceEstimate(currentUser, job),
+    matched: match.matchedSkills,
+    missing: match.missingSkills,
+    reasons: match.reasons,
+    improvement: match.tips.join(" "),
+    educationMatch: match.educationMatch,
   };
 }
 
@@ -352,10 +335,16 @@ function renderCandidateHome() {
   const completeness = UserService.calculateCompleteness(currentUser);
   const applications = PlatformService.getCandidateApplications(currentUser.id);
   const activeApplications = applications.filter((application) => !["Desistiu", "Não selecionada", "Contratada"].includes(application.status)).length;
-  const unread = PlatformService.getCandidateNotifications(currentUser.id).filter((item) => !item.read).length;
-  const recommendations = PlatformService.getPublishedJobs().map((job) => ({ job, score: jobScore(job, currentUser) })).sort((a, b) => b.score - a.score).slice(0, 2);
+  const notifications = PlatformService.getCandidateNotifications(currentUser.id);
+  const unread = notifications.filter((item) => !item.read).length;
+  const appliedJobIds = new Set(applications.filter((application) => application.status !== "Desistiu").map((application) => application.jobId));
+  const recommendations = MatchService.recommend(
+    currentUser,
+    PlatformService.getPublishedJobs().filter((job) => !appliedJobIds.has(job.id)),
+    { limit: 3 },
+  );
   const ads = PlatformService.getCandidateAds();
-  const newest = PlatformService.getCandidateNotifications(currentUser.id)[0];
+  const newest = notifications.find((notification) => !notification.read);
   const completedItems = completeness.checklist.filter((item) => item.done && !item.optional).length;
   const requiredItems = completeness.checklist.filter((item) => !item.optional).length;
   return `<div class="stat-grid">
@@ -379,12 +368,12 @@ function renderCandidateHome() {
     </section>
   </div>
   <section class="panel-card" style="margin-top:1rem">
-    <div class="card-head"><div class="card-head-copy"><h2>Oportunidades recomendadas</h2><p class="panel-card-subtitle">Anúncios fictícios para você experimentar os filtros e o fluxo de interesse.</p></div>${button("Ver todas", "go-view", { style: "btn-ghost", small: true, id: "jobs" })}</div>
-    <div class="job-list">${recommendations.length ? recommendations.map(({ job }) => jobCard(job, { showScore: true, showDescription: false })).join("") : emptyState("Sem anúncios no catálogo", "Volte mais tarde ou ajuste seus filtros.")}</div>
+    <div class="card-head"><div class="card-head-copy"><h2>Oportunidades recomendadas</h2><p class="panel-card-subtitle">Anúncios fictícios; as sugestões podem variar diariamente e não repetem oportunidades nas quais você já registrou interesse.</p></div>${button("Ver todas", "go-view", { style: "btn-ghost", small: true, id: "jobs" })}</div>
+    <div class="job-list">${recommendations.length ? recommendations.map(({ job }) => jobCard(job, { showScore: true, showDescription: false })).join("") : emptyState("Sem novas sugestões", "Você já registrou interesse em todas as oportunidades disponíveis ou não há anúncios no catálogo.")}</div>
   </section>
   <div class="panel-grid two" style="margin-top:1rem">
     <section class="panel-card"><div class="card-head"><div><h2>Notificação recente</h2><p class="panel-card-subtitle">Avisos são gerados localmente na demonstração.</p></div>${button("Abrir notificações", "go-view", { style: "btn-ghost", small: true, id: "notifications" })}</div>
-      ${newest ? `<div class="notification-card ${newest.read ? "" : "unread"}"><span class="notification-icon">${ICONS.notifications}</span><div class="notification-copy"><strong>${escapeHtml(newest.title)}</strong><p>${escapeHtml(newest.message)}</p><small>${formattedDate(newest.createdAt, true)}</small></div></div>` : emptyState("Tudo em dia", "Ainda não há avisos.", "notifications")}
+      ${newest ? `<div class="notification-card unread"><span class="notification-icon">${ICONS.notifications}</span><div class="notification-copy"><strong>${escapeHtml(newest.title)}</strong><p>${escapeHtml(newest.message)}</p><small>${formattedDate(newest.createdAt, true)}</small></div></div>` : emptyState("Tudo em dia", "Não há avisos novos. Consulte a área de notificações para ver os avisos já lidos.", "notifications")}
     </section>
     <section class="panel-card"><div class="card-head"><div><h2>Plano de desenvolvimento</h2><p class="panel-card-subtitle">Sugestões de estudo, sem vínculo com cursos pagos ou certificados.</p></div>${button("Explorar temas", "go-view", { style: "btn-ghost", small: true, id: "courses" })}</div><p style="color:var(--text-muted);font-size:.85rem">${PlatformService.getCourseProgress(currentUser.id).planned.length} tema(s) no seu plano e ${PlatformService.getCourseProgress(currentUser.id).completed.length} marcado(s) como concluído(s).</p></section>
   </div>`;
@@ -395,44 +384,60 @@ function renderRadar() {
   const companies = PlatformService.getCompanies();
   const publishedJobs = PlatformService.getPublishedJobs();
   const maxDistance = Number(settings.distanceMaxKm) || 50;
-  const city = settings.radarCity ?? currentUser.cidade ?? "";
-  const state = settings.radarState ?? currentUser.estado ?? "";
+  const address = settings.radarAddress || "";
+  const city = settings.radarCity || "";
+  const state = settings.radarState || "";
   const neighborhood = settings.radarNeighborhood || "";
-  const origin = { city, state };
-  const visibleJobs = publishedJobs.filter((job) => {
-    const distance = PlatformService.distanceEstimate(origin, job);
-    const cityMatch = !city || normalizedText(`${job.city} ${job.state}`).includes(normalizedText(city));
-    const stateMatch = !state || !job.state || normalizedText(job.state) === normalizedText(state);
-    const neighborhoodMatch = !neighborhood || normalizedText(`${job.address || ""} ${job.city || ""}`).includes(normalizedText(neighborhood));
-    const withinRadius = distance === null || distance <= maxDistance;
-    return cityMatch && stateMatch && neighborhoodMatch && withinRadius
-      && (!settings.radarType || job.type === settings.radarType)
-      && (!settings.radarArea || job.area === settings.radarArea)
-      && (!settings.radarModality || job.modality === settings.radarModality);
-  }).sort((a, b) => jobScore(b, currentUser) - jobScore(a, currentUser));
-  const sortedCompanies = companies.map((company) => ({ company, distance: PlatformService.distanceEstimate(origin, company) }))
+  const origin = address ? { address } : currentUser;
+  const originKnown = PlatformService.hasLocationCoordinates(origin);
+  const withinRadius = (place) => {
+    if (!originKnown) return true;
+    const distance = PlatformService.distanceEstimate(origin, place);
+    return distance !== null && distance <= maxDistance;
+  };
+  const matchesPlaceFilters = (place) => {
+    const cityMatch = !city || normalizedText(`${place.city || ""} ${place.state || ""}`).includes(normalizedText(city));
+    const stateMatch = !state || normalizedText(place.state) === normalizedText(state);
+    const neighborhoodMatch = !neighborhood || normalizedText(`${place.address || ""} ${place.city || ""}`).includes(normalizedText(neighborhood));
+    return cityMatch && stateMatch && neighborhoodMatch && withinRadius(place);
+  };
+  const filteredJobs = publishedJobs.filter((job) => matchesPlaceFilters(job)
+    && (!settings.radarType || job.type === settings.radarType)
+    && (!settings.radarArea || job.area === settings.radarArea)
+    && (!settings.radarModality || job.modality === settings.radarModality));
+  const visibleJobs = MatchService.recommend(currentUser, filteredJobs, { limit: filteredJobs.length }).map(({ job }) => job);
+  const sortedCompanies = companies
+    .filter(matchesPlaceFilters)
+    .map((company) => ({ company, distance: PlatformService.distanceEstimate(origin, company) }))
     .sort((a, b) => (a.distance ?? Number.MAX_SAFE_INTEGER) - (b.distance ?? Number.MAX_SAFE_INTEGER));
   const radiusSelect = `<select class="input" id="radarRadius" aria-label="Distância máxima">${DISTANCE_OPTIONS.map((distance) => `<option value="${distance}" ${maxDistance === distance ? "selected" : ""}>${distance} km</option>`).join("")}</select>`;
-  const stateSelect = `<select class="input" id="radarState" aria-label="Estado">${optionList(CATALOGS.estados, state, "Todas as UFs")}</select>`;
+  const stateSelect = `<select class="input" id="radarState" aria-label="Filtrar por estado">${optionList(CATALOGS.estados, state, "Todas as UFs")}</select>`;
+  const distanceStatus = originKnown
+    ? `Raio de até ${maxDistance} km aplicado a partir de ${address ? "uma cidade reconhecida no endereço informado" : "uma cidade reconhecida no seu perfil"}.`
+    : address
+      ? "Endereço não reconhecido na base demonstrativa; o raio não foi aplicado. Informe cidade e UF de uma região atendida."
+      : "A cidade do perfil não consta na base demonstrativa; o raio não foi aplicado.";
   return `<section class="panel-card radar-filter-card" style="margin-bottom:1rem">
-    <div class="card-head"><div class="card-head-copy"><h2>Configure seu Radar</h2><p class="panel-card-subtitle">Ajuste local, distância e preferências para filtrar os anúncios do catálogo.</p></div><span class="demo-tag">Fontes externas não conectadas</span></div>
+    <div class="card-head"><div class="card-head-copy"><h2>Configure seu Radar</h2><p class="panel-card-subtitle">Busque oportunidades a partir de um endereço de referência e ajuste o raio e os filtros.</p></div><span class="demo-tag">Consulta local</span></div>
     <div class="radar-filter-fields">
-      <div class="field"><label for="radarCity">Cidade</label><input class="input" id="radarCity" value="${escapeHtml(city)}" placeholder="Ex.: Araucária" /></div>
-      <div class="field"><label for="radarState">Estado</label>${stateSelect}</div>
-      <div class="field"><label for="radarNeighborhood">Bairro / região</label><input class="input" id="radarNeighborhood" value="${escapeHtml(neighborhood)}" placeholder="Ex.: Centro" /></div>
+      <form class="field radar-address-field" data-form="radar-address" role="search"><label for="radarAddress">Endereço de referência</label><div class="radar-address-control"><input class="input" id="radarAddress" type="search" autocomplete="street-address" maxlength="180" value="${escapeHtml(address)}" placeholder="Rua, bairro, cidade e UF" /><button class="btn btn-ghost btn-sm" type="submit">Buscar</button></div><p class="form-help">Processado só neste navegador; a distância usa o centro urbano reconhecido, não o ponto exato da rua.</p></form>
       <div class="field"><label for="radarRadius">Distância máxima</label>${radiusSelect}</div>
+      <div class="field"><label for="radarCity">Filtrar por cidade</label><input class="input" id="radarCity" value="${escapeHtml(city)}" placeholder="Ex.: Araucária" /></div>
+      <div class="field"><label for="radarState">Filtrar por UF</label>${stateSelect}</div>
+      <div class="field"><label for="radarNeighborhood">Filtrar por bairro / região</label><input class="input" id="radarNeighborhood" value="${escapeHtml(neighborhood)}" placeholder="Ex.: Centro" /></div>
       <div class="field"><label for="radarType">Tipo de oportunidade</label><select class="input" id="radarType">${optionList(CATALOGS.tiposVaga, settings.radarType || "", "Todos os tipos")}</select></div>
       <div class="field"><label for="radarArea">Área de interesse</label><select class="input" id="radarArea">${optionList(CATALOGS.areasInteresse, settings.radarArea || "", "Todas as áreas")}</select></div>
       <div class="field"><label for="radarModality">Modalidade</label><select class="input" id="radarModality">${optionList(CATALOGS.modalidades, settings.radarModality || "", "Todas as modalidades")}</select></div>
     </div>
-    <p class="form-help">Distância aproximada entre centros urbanos conhecidos, não entre endereços. Sem Google Maps; regiões sem coordenadas são mantidas no resultado com distância não calculada.</p>
+    <p class="form-help" role="status">${escapeHtml(distanceStatus)} O reconhecimento local cobre Curitiba, Araucária, São José dos Pinhais, Pinhais, Colombo, Campo Largo e Fazenda Rio Grande.</p>
+    <p class="form-help">Estimativa em linha reta entre centros urbanos conhecidos (não rota de rua); endereço não é enviado a geocodificador ou serviço externo. Anúncios sem distância calculável ficam fora do raio quando a origem é reconhecida.</p>
   </section>
   <div class="panel-grid two">
     <section class="panel-card"><div class="card-head"><div><h2>Empresas no catálogo demonstrativo</h2><p class="panel-card-subtitle">São entidades fictícias para teste. Não as apresentamos como contratantes sem anúncio confirmado.</p></div></div>
-      <div class="job-list">${sortedCompanies.map(({ company, distance }) => `<article class="company-found-card"><span class="company-found-icon">${ICONS.company}</span><div><h3>${escapeHtml(company.name)}</h3><p>${escapeHtml(company.sector || "Setor não informado")} · ${escapeHtml(locationText(company))}</p><p>${escapeHtml(company.address || "Localização demonstrativa")}</p><p>${distance === null ? "Distância não calculada sem dados demonstrativos para a cidade." : `≈ ${distance} km entre centros urbanos (estimativa demonstrativa, não endereço real).`}</p><p><strong>Vagas confirmadas: nenhuma.</strong> ${company.id === "company-demo" ? `${publishedJobs.filter((job) => job.companyId === company.id).length} anúncio(s) demonstrativo(s) no catálogo.` : "Não há anúncio associado a este registro."}</p></div><span class="demo-tag">Fictícia</span></article>`).join("") || emptyState("Nenhum registro encontrado", "Não há empresas demonstrativas neste catálogo.", "company")}</div>
+      <div class="job-list">${sortedCompanies.map(({ company, distance }) => `<article class="company-found-card"><span class="company-found-icon">${ICONS.company}</span><div><h3>${escapeHtml(company.name)}</h3><p>${escapeHtml(company.sector || "Setor não informado")} · ${escapeHtml(locationText(company))}</p><p>${escapeHtml(company.address || "Localização demonstrativa")}</p><p>${distance === null ? "Distância não calculada sem dados demonstrativos para a cidade." : `≈ ${distance} km entre centros urbanos (estimativa demonstrativa, não endereço real).`}</p><p><strong>Vagas confirmadas: nenhuma.</strong> ${company.id === "company-demo" ? `${publishedJobs.filter((job) => job.companyId === company.id).length} anúncio(s) demonstrativo(s) no catálogo.` : "Não há anúncio associado a este registro."}</p></div><span class="demo-tag">Fictícia</span></article>`).join("") || emptyState("Nenhum registro encontrado", "Nenhuma empresa corresponde aos filtros e ao raio disponíveis.", "company")}</div>
     </section>
     <section class="panel-card"><div class="card-head"><div><h2>Oportunidades compatíveis</h2><p class="panel-card-subtitle">${visibleJobs.length} anúncio(s) demonstrativo(s) correspondem aos filtros. Nenhum deles é uma vaga real confirmada.</p></div></div>
-      <div class="job-list">${visibleJobs.length ? visibleJobs.map((job) => jobCard(job, { showScore: true, showDescription: false })).join("") : emptyState("Nenhum anúncio neste filtro", "Altere cidade, raio, modalidade ou preferências para explorar outros exemplos.")}</div>
+      <div class="job-list">${visibleJobs.length ? visibleJobs.map((job) => jobCard(job, { showScore: true, showDescription: false })).join("") : emptyState("Nenhum anúncio neste filtro", "Altere endereço, raio, cidade, modalidade ou preferências para explorar outros exemplos.")}</div>
     </section>
   </div>
   <section class="panel-card radar-map-note"><div class="map-note-icon">⌖</div><div><h3>Visualização em mapa</h3><p>Mapa indisponível nesta versão: Google Maps/serviço equivalente ainda não foi conectado. A lista acima usa apenas coordenadas demonstrativas de centros urbanos.</p></div><span class="demo-tag">Integração pendente</span></section>
@@ -935,6 +940,13 @@ async function handleFormSubmit(form) {
   const submitButton = form.querySelector('[type="submit"]');
   if (submitButton) submitButton.disabled = true;
   try {
+    if (kind === "radar-address") {
+      const settings = PlatformService.getCandidateSettings(currentUser.id);
+      PlatformService.saveCandidateSettings(currentUser.id, { ...settings, radarAddress: $("#radarAddress", form).value });
+      renderPage();
+      showToast("Endereço de referência atualizado localmente.", "success");
+      return;
+    }
     if (kind === "candidate-settings") {
       PlatformService.saveCandidateSettings(currentUser.id, {
         distanceMaxKm: $("#settingDistance", form).value,

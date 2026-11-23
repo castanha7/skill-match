@@ -187,6 +187,22 @@ function addNotification(state, userId, { title, message, targetView = "notifica
   });
 }
 
+function addUniqueJobNotification(state, candidateId, job) {
+  const title = "Nova oportunidade demonstrativa";
+  const message = `${job.title} foi aprovada para aparecer no catálogo de demonstração. Não é uma vaga real.`;
+  const matches = state.notifications
+    .filter((notification) => notification.userId === candidateId && notification.type === "job" && notification.linkId === job.id)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  if (matches.length) {
+    const [existing, ...duplicates] = matches;
+    Object.assign(existing, { title, message, targetView: "jobs", linkId: job.id });
+    const duplicateNotifications = new Set(duplicates);
+    if (duplicateNotifications.size) state.notifications = state.notifications.filter((notification) => !duplicateNotifications.has(notification));
+    return;
+  }
+  addNotification(state, candidateId, { title, message, targetView: "jobs", linkId: job.id, type: "job" });
+}
+
 function ensureState() {
   const stored = StorageService.get(DATA_KEY);
   const state = stored && stored.version === 1 ? stored : EMPTY_STATE();
@@ -267,7 +283,53 @@ const CITY_COORDINATES = {
 
 function normalizedLocation(city, state) {
   const clean = String(city ?? "").trim().toLocaleLowerCase("pt-BR").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  return `${clean}|${String(state ?? "").trim().toUpperCase()}`;
+  return `${clean}|${String(state ?? "").trim().toLowerCase()}`;
+}
+
+function normalizedAddress(value) {
+  return String(value ?? "")
+    .toLocaleLowerCase("pt-BR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+const KNOWN_LOCATION_ENTRIES = Object.entries(CITY_COORDINATES)
+  .map(([key, coordinates]) => {
+    const [city, state] = key.split("|");
+    return { city, state, coordinates };
+  })
+  .sort((a, b) => b.city.length - a.city.length);
+
+function coordinatesFor(place) {
+  if (!place) return null;
+  const latitude = Number(place.latitude ?? place.lat);
+  const longitude = Number(place.longitude ?? place.lng ?? place.lon);
+  if (Number.isFinite(latitude) && Number.isFinite(longitude)
+    && latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180) {
+    return [latitude, longitude];
+  }
+
+  const source = typeof place === "string" ? { address: place } : place;
+  const city = String(source.city ?? source.cidade ?? "").trim();
+  const state = String(source.state ?? source.estado ?? source.uf ?? "").trim().toUpperCase();
+  if (city && state) {
+    const exact = CITY_COORDINATES[normalizedLocation(city, state)];
+    if (exact) return exact;
+  }
+
+  const query = normalizedAddress(`${source.address ?? source.query ?? ""} ${city} ${state}`);
+  if (!query) return null;
+  const stateMatch = (state.match(/^[A-Z]{2}$/) ? state : query.match(/(?:^| )(ac|al|ap|am|ba|ce|df|es|go|ma|mt|ms|mg|pa|pb|pr|pe|pi|rj|rn|rs|ro|rr|sc|sp|se|to)$/)?.[1])?.toLowerCase();
+  const paddedQuery = ` ${query} `;
+  const matches = KNOWN_LOCATION_ENTRIES
+    .filter((entry) => !stateMatch || stateMatch === entry.state)
+    .map((entry) => ({ ...entry, index: paddedQuery.lastIndexOf(` ${entry.city} `) }))
+    .filter((entry) => entry.index >= 0)
+    .sort((a, b) => (b.index + b.city.length) - (a.index + a.city.length) || b.city.length - a.city.length);
+  return matches[0]?.coordinates || null;
 }
 
 export const PlatformService = {
@@ -447,23 +509,16 @@ export const PlatformService = {
     return update((state) => {
       const job = state.jobs.find((entry) => entry.id === jobId);
       if (!job) throw new Error("Vaga não encontrada.");
+      const wasPublished = job.approved === true && job.active !== false && job.removed !== true;
       job.approved = Boolean(approved);
       job.active = Boolean(approved);
       job.removed = false;
       job.reviewedAt = new Date().toISOString();
-      if (approved) {
+      if (approved && !wasPublished) {
         const candidates = UserService.listByRole("candidate");
         candidates.forEach((candidate) => {
           const settings = state.preferences[candidate.id] || { notifyNewJobs: true };
-          if (settings.notifyNewJobs !== false) {
-            addNotification(state, candidate.id, {
-              title: "Nova oportunidade demonstrativa",
-              message: `${job.title} foi aprovada para aparecer no catálogo de demonstração. Não é uma vaga real.`,
-              targetView: "jobs",
-              linkId: job.id,
-              type: "job",
-            });
-          }
+          if (settings.notifyNewJobs !== false) addUniqueJobNotification(state, candidate.id, job);
         });
       }
       return { ...job };
@@ -565,10 +620,16 @@ export const PlatformService = {
   },
 
   getCandidateNotifications(userId) {
-    return ensureState().notifications
+    const notifications = ensureState().notifications
       .filter((notification) => notification.userId === userId)
-      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))
-      .map((notification) => ({ ...notification }));
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    const seenJobs = new Set();
+    return notifications.filter((notification) => {
+      if (notification.type !== "job" || !notification.linkId) return true;
+      if (seenJobs.has(notification.linkId)) return false;
+      seenJobs.add(notification.linkId);
+      return true;
+    }).map((notification) => ({ ...notification }));
   },
 
   markNotificationRead(notificationId, userId) {
@@ -592,7 +653,7 @@ export const PlatformService = {
 
   getCandidateSettings(userId) {
     const settings = ensureState().preferences[userId];
-    return { distanceMaxKm: 50, visibleToCompanies: true, notifyNewJobs: true, radarCity: null, radarState: null, radarNeighborhood: "", radarType: "", radarArea: "", radarModality: "", ...(settings || {}) };
+    return { distanceMaxKm: 50, visibleToCompanies: true, notifyNewJobs: true, radarAddress: "", radarCity: "", radarState: "", radarNeighborhood: "", radarType: "", radarArea: "", radarModality: "", ...(settings || {}) };
   },
 
   saveCandidateSettings(userId, settings) {
@@ -602,6 +663,7 @@ export const PlatformService = {
         distanceMaxKm: Math.min(500, Math.max(1, Number(settings.distanceMaxKm) || 50)),
         visibleToCompanies: Boolean(settings.visibleToCompanies),
         notifyNewJobs: Boolean(settings.notifyNewJobs),
+        radarAddress: String(settings.radarAddress ?? state.preferences[userId]?.radarAddress ?? "").trim().slice(0, 180),
         radarCity: String(settings.radarCity ?? state.preferences[userId]?.radarCity ?? "").trim().slice(0, 120),
         radarState: String(settings.radarState ?? state.preferences[userId]?.radarState ?? "").trim().toUpperCase().slice(0, 2),
         radarNeighborhood: String(settings.radarNeighborhood ?? state.preferences[userId]?.radarNeighborhood ?? "").trim().slice(0, 120),
@@ -767,10 +829,13 @@ export const PlatformService = {
     });
   },
 
+  hasLocationCoordinates(place) {
+    return coordinatesFor(place) !== null;
+  },
+
   distanceEstimate(origin, destination) {
-    if (!origin?.city || !origin?.state || !destination?.city || !destination?.state) return null;
-    const from = CITY_COORDINATES[normalizedLocation(origin.city, origin.state)];
-    const to = CITY_COORDINATES[normalizedLocation(destination.city, destination.state)];
+    const from = coordinatesFor(origin);
+    const to = coordinatesFor(destination);
     if (!from || !to) return null;
     const radians = (degrees) => degrees * Math.PI / 180;
     const [lat1, lon1] = from.map(radians);

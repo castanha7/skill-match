@@ -210,6 +210,9 @@
 .company-found-card { display: grid; grid-template-columns: 44px minmax(0,1fr) auto; align-items: start; gap: .75rem; padding: 1rem; background: #fff; border: 1px solid var(--border); border-radius: 14px; }
 .radar-filter-fields { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.75rem;margin-top:1rem; }
 .radar-filter-fields .field { margin:0; }
+.radar-address-control { display:flex;align-items:center;gap:.4rem; }
+.radar-address-control .input { flex:1;min-width:0; }
+.radar-address-control .btn { flex:none;padding:.65rem .75rem;font-size:.77rem; }
 .radar-filter-fields label { display:block;font-size:.75rem;font-weight:700;color:var(--navy-800);margin-bottom:.35rem; }
 .radar-filter-fields .input { padding:.65rem .75rem;font-size:.83rem; }
 .radar-map-note { display:flex;align-items:center;gap:.9rem;margin-top:1rem; }

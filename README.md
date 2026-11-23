@@ -17,8 +17,8 @@ Candidato, empresa e administração mantêm os fluxos de cadastro/login/painel 
 - **Página pública (`index.html`)**: busca e filtro por cargo, empresa, requisito, cidade/UF e tipo; ordenação; detalhes e estados transparentes; menu responsivo; redirecionamento para cadastro/login ao tentar salvar/candidatar-se.
 - **Cadastro/login demonstrativos**: validação, senha derivada localmente, editar perfil, foto, cursos, experiências, interesses, disponibilidade e preferências; recuperação de senha gera código local e não envia e-mail.
 - **Painel do candidato**: início, vagas, Radar, candidaturas locais, currículo imprimível/exportável pela impressão do navegador, perfil, cursos/planejamento, notificações e configurações.
-- **Radar local**: cidade, UF, bairro/região, raio, tipo, área e modalidade são filtros persistidos neste navegador. Distâncias usam centros urbanos estáticos conhecidos e não endereços/rotas; cidades desconhecidas ficam com distância não calculada. Não há mapa conectado.
-- **Compatibilidade demonstrativa**: percentual determinístico baseado nos campos do perfil/vaga. Detalhes mostram critérios, requisitos cadastrados que coincidem, itens a desenvolver e sugestões; não é IA nem chance de contratação.
+- **Radar local**: endereço de referência, cidade/UF, bairro/região, raio, tipo, área e modalidade são filtros persistidos neste navegador. O endereço é analisado localmente e reconhece sete centros urbanos do Paraná; o raio usa distância aproximada em linha reta entre centros, não o ponto exato da rua nem rota. Endereço não reconhecido deixa o raio sem aplicação, com aviso visível. Nenhum geocodificador externo ou mapa está conectado.
+- **Compatibilidade demonstrativa**: serviço local explica correspondência de habilidades, área, tipo, localização e escolaridade (incluindo nível e “em curso/concluído”). Sugestões podem variar diariamente e excluem oportunidades com interesse já registrado; o percentual não é IA nem chance de contratação.
 - **Empresa demonstrativa**: página de cadastro empresarial (`cadastro-empresa.html`), login, perfil, publicação/edição/pausa de vagas, consulta de candidaturas e alteração de status. **Admin demonstrativo**: moderação, cadastros e relatos locais. Esses dados ficam no navegador e não são compartilhados; nenhuma vaga da conta de teste é divulgada como contratação real.
 - **API inicial (`backend/`)**: autenticação com bcrypt/JWT no servidor, validação, CORS, rate limit, consultas parametrizadas, API pública de vagas, candidatura autenticada, provedor de busca estruturado autorizado e agendamento opcional. Ela **não foi conectada às telas autenticadas do frontend**, nem testada com MySQL ou credenciais externas nesta sessão.
 
@@ -93,7 +93,7 @@ npm ci
 npm test
 ```
 
-Os testes automatizados cobrem cadastro/login/recuperação, fluxos existentes de perfil, painel, vagas, Radar, empresas/admin e navegação, além de busca/filtro/modal da nova página pública e validações básicas de páginas. São testes Node/JSDOM, não equivalem a teste visual em navegadores/dispositivos nem validam serviço MySQL real. Nesta sessão: **18 testes passaram**. A sintaxe dos módulos do backend foi verificada e `npm audit` do backend não reportou vulnerabilidades após atualizar as dependências.
+Os testes automatizados cobrem cadastro/login/recuperação, fluxos de perfil, painel, vagas, Radar, empresas/admin e navegação, além de busca/filtro/modal da página pública, compatibilidade de habilidades/escolaridade, variação de recomendações e distâncias do Radar. São testes Node/JSDOM, não equivalem a teste visual em navegadores/dispositivos nem validam serviço MySQL real. Nesta sessão: **23 testes passaram**. A sintaxe dos módulos do backend foi verificada e `npm audit` do backend não reportou vulnerabilidades após atualizar as dependências.
 
 ## Estrutura
 
