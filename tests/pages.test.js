@@ -13,6 +13,9 @@ for (const page of pages) {
     const dom = new JSDOM(readFileSync(resolve(root, page), "utf8"));
     const document = dom.window.document;
     assert.ok(document.querySelector('meta[name="viewport"]'), "A página deve declarar viewport responsivo.");
+    const refreshStylesheet = document.querySelector('link[rel="stylesheet"][href="assets/css/brand-refresh.css"]');
+    assert.ok(refreshStylesheet, "Todas as telas devem usar a identidade visual repaginada.");
+    assert.equal([...document.querySelectorAll('link[rel="stylesheet"]')].at(-1), refreshStylesheet, "A camada visual deve preservar os estilos funcionais e ser carregada por último.");
 
     const ids = [...document.querySelectorAll("[id]")].map((element) => element.id);
     assert.equal(new Set(ids).size, ids.length, "IDs repetidos podem quebrar rótulos e interações.");
