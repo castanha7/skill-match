@@ -41,12 +41,25 @@ initPasswordToggles();
 const params = new URLSearchParams(window.location.search);
 const demoBox = $(".demo-box");
 const demoDivider = $("#demoDivider");
+const demoModeToggle = $("#demoModeToggle");
+if (demoModeToggle) {
+  demoModeToggle.textContent = APP_CONFIG.demoMode ? "Voltar ao acesso normal" : "Acessar demonstração";
+  demoModeToggle.addEventListener("click", () => {
+    try {
+      if (APP_CONFIG.demoMode) sessionStorage.removeItem("skillmatch:demo-mode");
+      else sessionStorage.setItem("skillmatch:demo-mode", "true");
+      window.location.reload();
+    } catch {
+      showAlert(alertError, "#loginAlertText", "Não foi possível ativar a demonstração. Permita o armazenamento neste navegador.");
+    }
+  });
+}
 if (APP_CONFIG.demoMode) {
   demoBox?.removeAttribute("hidden");
   demoDivider?.removeAttribute("hidden");
 } else {
   demoBox?.setAttribute("hidden", "");
-  demoDivider?.setAttribute("hidden", "");
+  demoDivider?.removeAttribute("hidden");
 }
 if (APP_CONFIG.useApi) {
   forgotModal.querySelector(".modal > p")?.replaceChildren(document.createTextNode("Informe o e-mail da sua conta. Se houver uma conta para esse endereço, o serviço enviará instruções seguras de recuperação."));

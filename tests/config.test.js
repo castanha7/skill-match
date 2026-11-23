@@ -31,3 +31,24 @@ test('o frontend usa API por padrão e só ativa fixtures locais em modo explíc
     else globalThis.document = priorDocument;
   }
 });
+
+test('demonstração escolhida na aba usa sessão separada da API', async () => {
+  const priorStorage = globalThis.sessionStorage;
+  const priorConfig = globalThis.SKILLMATCH_CONFIG;
+  try {
+    globalThis.SKILLMATCH_CONFIG = {};
+    globalThis.sessionStorage = { getItem: (key) => key === 'skillmatch:demo-mode' ? 'true' : null };
+    const { APP_CONFIG: demo } = await import(`${configUrl}?test=${++importSequence}`);
+    assert.equal(demo.demoMode, true);
+    assert.equal(demo.storageKeys.session, 'skillmatch:demo-session');
+    globalThis.sessionStorage = { getItem: () => null };
+    const { APP_CONFIG: api } = await import(`${configUrl}?test=${++importSequence}`);
+    assert.equal(api.useApi, true);
+    assert.equal(api.storageKeys.session, 'skillmatch:session');
+  } finally {
+    if (priorStorage === undefined) delete globalThis.sessionStorage;
+    else globalThis.sessionStorage = priorStorage;
+    if (priorConfig === undefined) delete globalThis.SKILLMATCH_CONFIG;
+    else globalThis.SKILLMATCH_CONFIG = priorConfig;
+  }
+});
