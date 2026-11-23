@@ -9,6 +9,7 @@ class MemoryStorage {
 }
 
 test('migra a preferência antiga de visibilidade para privada sem descartar outros dados', async () => {
+  globalThis.SKILLMATCH_CONFIG = { mode: 'demo' }; // Este teste cobre somente a migração do sandbox local.
   globalThis.localStorage = new MemoryStorage();
   const [{ APP_CONFIG }, { PlatformService }] = await Promise.all([
     import('../assets/js/config/app.config.js'),

@@ -66,7 +66,7 @@ const ApiService = {
 
   async request(endpoint, { method = "GET", body, token, skipAuth = false, retryAuth = true } = {}) {
     if (!APP_CONFIG.apiBaseUrl) {
-      throw new Error("A API do SkillMatch ainda não foi configurada. Este projeto está em modo demonstrativo local.");
+      throw new Error("A API do SkillMatch não foi localizada. Sirva o app pelo backend ou configure a meta skillmatch-api-base com a URL HTTPS da API.");
     }
     const cleanEndpoint = String(endpoint).replace(/^\/+/, "");
     const url = new URL(cleanEndpoint, `${APP_CONFIG.apiBaseUrl.replace(/\/$/, "")}/`);

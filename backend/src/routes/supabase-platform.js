@@ -10,6 +10,7 @@ import {
 
 const router = Router();
 const uuid = z.string().uuid();
+const JOB_SELECT_COLUMNS = 'id,company_id,title,area,employment_type,modality,city,state,address,education,description,required_skills,required_courses,required_experience,requirements,benefits,application_url,salary_min,salary_max,status,active_until,created_at,updated_at';
 const text = (max = 500) => z.string().trim().max(max);
 const arrayText = (max = 60, itemMax = 160) => z.array(z.string().trim().min(1).max(itemMax)).max(max);
 const jobSchema = z.object({
@@ -190,7 +191,7 @@ async function candidateBundles(req, ids = null) {
   const [candidateRows, privateRows, contactRows] = await Promise.all([
     data(source.from('candidate_profiles').select('*').in('user_id', profileIds), 'Não foi possível carregar os perfis profissionais.'),
     req.user.role === 'admin' || req.user.role === 'candidate'
-      ? data(source.from('candidate_private').select('user_id,email,birth_date').in('user_id', profileIds), 'Não foi possível carregar os dados privados.')
+      ? data(source.from('candidate_private').select('user_id,birth_date').in('user_id', profileIds), 'Não foi possível carregar os dados privados.')
       : Promise.resolve([]),
     data(source.from('candidate_contacts').select('user_id,phone,contact_sharing_consent,contact_consented_at').in('user_id', profileIds), 'Não foi possível carregar as preferências de contato.'),
   ]);
@@ -230,7 +231,8 @@ async function candidateBundles(req, ids = null) {
 }
 async function allJobRows(req, allowedIds = null) {
   const source = req.user.role === 'admin' ? req.adminSupabase : req.supabase;
-  let query = source.from('jobs').select('*').order('created_at', { ascending: false }).limit(1000);
+  const columns = req.user.role === 'admin' ? '*' : JOB_SELECT_COLUMNS;
+  let query = source.from('jobs').select(columns).order('created_at', { ascending: false }).limit(1000);
   if (allowedIds) query = allowedIds.length ? query.in('id', allowedIds) : query.eq('id', '__no_authorized_job__');
   else if (req.user.role === 'company' && req.user.companyId) query = query.eq('company_id', req.user.companyId);
   else if (req.user.role === 'candidate') query = query.eq('status', 'published');
@@ -239,7 +241,7 @@ async function allJobRows(req, allowedIds = null) {
 async function publicJobs() {
   const client = createAnonymousClient();
   const rows = await data(client.from('jobs')
-    .select('*,company_profiles!jobs_company_id_fkey(id,name,sector,city,state,website,public_contact_email,verified_at,active)')
+    .select(`${JOB_SELECT_COLUMNS},company_profiles!jobs_company_id_fkey(id,name,sector,city,state,website,public_contact_email,verified_at,active)`)
     .eq('status', 'published').order('created_at', { ascending: false }).limit(200), 'Não foi possível carregar as vagas públicas.');
   return rows.map((row) => mapJob(row, row.company_profiles));
 }
@@ -295,7 +297,7 @@ router.get('/platform/snapshot', authenticate, asyncRoute(async (req, res) => {
     req.user.role === 'company' ? data(db.from('company_saved_talents').select('*').eq('company_id', companyId), 'Não foi possível carregar os talentos salvos.') : Promise.resolve([]),
     req.user.role === 'candidate' ? data(db.from('candidate_interview_sessions').select('*').order('created_at', { ascending: false }).limit(30), 'Não foi possível carregar o histórico de prática.') : Promise.resolve([]),
     admin ? data(db.from('reports').select('*').order('created_at', { ascending: false }).limit(1000), 'Não foi possível carregar os relatos.') : Promise.resolve([]),
-    admin ? data(db.from('announcements').select('*').order('created_at', { ascending: false }).limit(1000), 'Não foi possível carregar os comunicados.') : req.user.role === 'candidate' ? data(db.from('announcements').select('*').eq('active', true).order('created_at', { ascending: false }).limit(100), 'Não foi possível carregar os comunicados.') : Promise.resolve([]),
+    admin ? data(db.from('announcements').select('*').order('created_at', { ascending: false }).limit(1000), 'Não foi possível carregar os comunicados.') : req.user.role === 'candidate' ? data(db.from('announcements').select('id,title,message,active,created_at,updated_at').eq('active', true).order('created_at', { ascending: false }).limit(100), 'Não foi possível carregar os comunicados.') : Promise.resolve([]),
   ]);
 
   let applicationRows = appRows;
@@ -343,7 +345,7 @@ router.get('/platform/snapshot', authenticate, asyncRoute(async (req, res) => {
   if (req.user.role === 'candidate') {
     const profile = await data(req.adminSupabase.from('profiles').select('id,role,status,full_name,created_at').eq('id', req.user.id).single(), 'Não foi possível carregar sua conta.');
     users = [mapProfile({ ...profile, candidate_profiles: await data(req.adminSupabase.from('candidate_profiles').select('*').eq('user_id', req.user.id).single(), 'Não foi possível carregar seu perfil.') }, {
-      privateData: await data(req.adminSupabase.from('candidate_private').select('email,birth_date').eq('user_id', req.user.id).single(), 'Não foi possível carregar seus dados privados.'),
+      privateData: await data(req.adminSupabase.from('candidate_private').select('birth_date').eq('user_id', req.user.id).single(), 'Não foi possível carregar seus dados privados.'),
       contacts: await data(req.adminSupabase.from('candidate_contacts').select('phone,contact_sharing_consent').eq('user_id', req.user.id).single(), 'Não foi possível carregar suas preferências de contato.'),
       email: req.authUser.email,
     })];
@@ -473,7 +475,7 @@ router.post('/jobs', authenticate, allowRoles('company'), asyncRoute(async (req,
   if (!validHttpsOrEmpty(input.applicationUrl)) return res.status(400).json({ message: 'Informe um link de candidatura HTTP ou HTTPS válido.' });
   const status = input.active ? 'pending_review' : 'draft';
   const id = randomUUID();
-  const row = await data(req.supabase.from('jobs').insert({ id, ...jobFields(input, req.user.companyId, status) }).select('*').single(), 'Não foi possível publicar o anúncio.');
+  const row = await data(req.supabase.from('jobs').insert({ id, ...jobFields(input, req.user.companyId, status) }).select(JOB_SELECT_COLUMNS).single(), 'Não foi possível publicar o anúncio.');
   res.status(201).json({ job: mapJob(row) });
 }));
 router.put('/jobs/:jobId', authenticate, allowRoles('company'), asyncRoute(async (req, res) => {
@@ -486,13 +488,13 @@ router.put('/jobs/:jobId', authenticate, allowRoles('company'), asyncRoute(async
   const status = parsed.data.active ? (current.status === 'published' ? 'pending_review' : current.status === 'draft' ? 'pending_review' : current.status) : 'paused';
   const update = jobFields(parsed.data, req.user.companyId, status);
   delete update.company_id;
-  const row = await data(req.supabase.from('jobs').update(update).eq('id', parsedId.data).select('*').single(), 'Não foi possível atualizar o anúncio.');
+  const row = await data(req.supabase.from('jobs').update(update).eq('id', parsedId.data).select(JOB_SELECT_COLUMNS).single(), 'Não foi possível atualizar o anúncio.');
   res.json({ job: mapJob(row) });
 }));
 router.patch('/jobs/:jobId/status', authenticate, allowRoles('company'), asyncRoute(async (req, res) => {
   const parsed = z.object({ active: z.boolean() }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ message: 'Status de anúncio inválido.' });
-  const row = await data(req.supabase.from('jobs').update({ status: parsed.data.active ? 'pending_review' : 'paused', updated_at: new Date().toISOString() }).eq('id', req.params.jobId).select('*').maybeSingle(), 'Não foi possível atualizar o anúncio.');
+  const row = await data(req.supabase.from('jobs').update({ status: parsed.data.active ? 'pending_review' : 'paused', updated_at: new Date().toISOString() }).eq('id', req.params.jobId).select(JOB_SELECT_COLUMNS).maybeSingle(), 'Não foi possível atualizar o anúncio.');
   if (!row) return res.status(404).json({ message: 'Anúncio não encontrado.' });
   res.json({ job: mapJob(row) });
 }));
@@ -939,7 +941,7 @@ router.post('/platform/actions', authenticate, asyncRoute(async (req, res) => {
       if (!parsed.success) throw httpError('Confira os campos do anúncio.', 400);
       if (!validHttpsOrEmpty(parsed.data.applicationUrl)) throw httpError('O link de candidatura precisa usar HTTP ou HTTPS.', 400);
       if (action === 'createJob') {
-        const row = await data(db.from('jobs').insert({ id: randomUUID(), ...jobFields(parsed.data, req.user.companyId, parsed.data.active ? 'pending_review' : 'draft') }).select('*').single(), 'Não foi possível criar o anúncio.');
+        const row = await data(db.from('jobs').insert({ id: randomUUID(), ...jobFields(parsed.data, req.user.companyId, parsed.data.active ? 'pending_review' : 'draft') }).select(JOB_SELECT_COLUMNS).single(), 'Não foi possível criar o anúncio.');
         result = mapJob(row);
       } else {
         const jobId = idField('jobId');
@@ -948,7 +950,7 @@ router.post('/platform/actions', authenticate, asyncRoute(async (req, res) => {
         const status = parsed.data.active ? current.status === 'published' || current.status === 'draft' ? 'pending_review' : current.status : 'paused';
         const update = jobFields(parsed.data, req.user.companyId, status);
         delete update.company_id;
-        const row = await data(db.from('jobs').update(update).eq('id', jobId).select('*').single(), 'Não foi possível atualizar o anúncio.');
+        const row = await data(db.from('jobs').update(update).eq('id', jobId).select(JOB_SELECT_COLUMNS).single(), 'Não foi possível atualizar o anúncio.');
         result = mapJob(row);
       }
       break;
@@ -963,14 +965,14 @@ router.post('/platform/actions', authenticate, asyncRoute(async (req, res) => {
         result = mapJob(row);
       } else {
         if (req.user.role !== 'company') throw httpError('Apenas a empresa responsável pode alterar o anúncio.', 403);
-        const row = await data(db.from('jobs').update({ status: active ? 'pending_review' : 'paused', updated_at: new Date().toISOString() }).eq('id', jobId).select('*').maybeSingle(), 'Não foi possível atualizar o anúncio.');
+        const row = await data(db.from('jobs').update({ status: active ? 'pending_review' : 'paused', updated_at: new Date().toISOString() }).eq('id', jobId).select(JOB_SELECT_COLUMNS).maybeSingle(), 'Não foi possível atualizar o anúncio.');
         if (!row) throw httpError('Anúncio não encontrado.', 404);
         result = mapJob(row);
       }
       break;
     }
     case 'archiveCompanyJob': {
-      const row = await data(db.from('jobs').update({ status: 'closed', updated_at: new Date().toISOString() }).eq('id', idField('jobId')).select('*').maybeSingle(), 'Não foi possível arquivar o anúncio.');
+      const row = await data(db.from('jobs').update({ status: 'closed', updated_at: new Date().toISOString() }).eq('id', idField('jobId')).select(JOB_SELECT_COLUMNS).maybeSingle(), 'Não foi possível arquivar o anúncio.');
       if (!row) throw httpError('Anúncio não encontrado.', 404);
       result = mapJob(row);
       break;

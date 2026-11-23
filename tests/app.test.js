@@ -18,6 +18,7 @@ function setDocument(dom, file) {
 }
 
 function setBrowserGlobals(dom) {
+  globalThis.SKILLMATCH_CONFIG = { mode: "demo" }; // Fluxos locais exclusivos da suíte automatizada.
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
   globalThis.localStorage = dom.window.localStorage;
@@ -151,7 +152,7 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     click('#forgotLink');
     setValue("resetEmail", "demo@skillmatch.com");
     submit(document.querySelector("#forgotRequestForm"));
-    assert.equal(document.querySelector("#forgotCompleteForm").hidden, false);
+    await waitFor(() => document.querySelector("#forgotCompleteForm").hidden === false, "O fluxo local de recuperação não exibiu o formulário de código.");
     const code = document.querySelector("#resetCodeText").textContent.match(/\d{6}/)?.[0];
     assert.ok(code, "A recuperação deve gerar um código local visível e temporário.");
     const oldHash = JSON.parse(localStorage.getItem(APP_CONFIG.storageKeys.users)).find((user) => user.email === "demo@skillmatch.com").senhaHash;
@@ -196,11 +197,11 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     assert.equal(PlatformService.getCandidateSettings("usr-demo-candidate").radarAddress, "Rua das Flores, Centro, Araucária - PR");
     setValue("radarRadius", "10");
     change(document.querySelector("#radarRadius"));
-    assert.equal(document.querySelectorAll("#appContent .job-card").length, 1);
+    await waitFor(() => document.querySelectorAll("#appContent .job-card").length === 1, "O raio reconhecido não filtrou as oportunidades.");
     assert.match(document.querySelector("#appContent").textContent, /Raio de até 10 km aplicado/);
     setValue("radarAddress", "Rua sem cidade reconhecida, 10");
     submit(document.querySelector('form[data-form="radar-address"]'));
-    assert.match(document.querySelector("#appContent").textContent, /Endereço não reconhecido.*raio não foi aplicado/i);
+    await waitFor(() => /Endereço não reconhecido.*raio não foi aplicado/i.test(document.querySelector("#appContent").textContent), "O aviso de endereço não reconhecido não foi exibido.");
     assert.equal(document.querySelectorAll("#appContent .job-card").length, 4);
 
     click('#appNav [data-view="jobs"]');
@@ -229,7 +230,7 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     click('#jobResults [data-action="apply-job"]');
     assert.equal(PlatformService.getCandidateApplications("usr-demo-candidate").length, 1);
     assert.equal(PlatformService.getCandidateApplications("usr-demo-candidate")[0].jobId, opportunityId);
-    assert.match(document.querySelector("#jobResults").textContent, /Interesse registrado/);
+    await waitFor(() => /Interesse registrado/.test(document.querySelector("#jobResults").textContent), "O cartão não refletiu o interesse registrado.");
     setValue("jobArea", "Logística");
     change(document.querySelector("#jobArea"));
     setValue("jobType", "Jovem Aprendiz");
@@ -267,6 +268,7 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     submit(document.querySelector('#appModalContent form[data-form="report"]'));
     assert.equal(PlatformService.getReports().length, 1);
     assert.equal(PlatformService.getReports()[0].status, "Aberto");
+    await waitFor(() => [...document.querySelectorAll(".toast")].some((toast) => /Relato guardado apenas localmente/.test(toast.textContent)), "O envio do relato não terminou.");
 
     click('#appNav [data-view="settings"]');
     const settingsForm = document.querySelector('form[data-form="candidate-settings"]');
@@ -278,11 +280,13 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
       (({ distanceMaxKm, visibleToCompanies, notifyNewJobs }) => ({ distanceMaxKm, visibleToCompanies, notifyNewJobs }))(PlatformService.getCandidateSettings("usr-demo-candidate")),
       { distanceMaxKm: 100, visibleToCompanies: false, notifyNewJobs: false },
     );
+    await waitFor(() => [...document.querySelectorAll(".toast")].some((toast) => /Preferências salvas neste navegador/.test(toast.textContent)), "As preferências não terminaram de salvar.");
 
     setValue("accountEmail", "  Mari.Costa+Teste@skillmatch.test  ");
     submit(document.querySelector('form[data-form="account-email"]'));
     await waitFor(() => UserService.listByRole("candidate").some((user) => user.id === "usr-demo-candidate" && user.email === "mari.costa+teste@skillmatch.test"), "O e-mail não foi atualizado.");
     assert.equal(AuthService.getSession().email, "mari.costa+teste@skillmatch.test");
+    await waitFor(() => Boolean(document.querySelector("#accountEmail")), "O formulário de dados da conta não foi renderizado novamente.");
     setValue("accountEmail", "empresa@skillmatch.com");
     submit(document.querySelector('form[data-form="account-email"]'));
     await pause();
@@ -519,8 +523,9 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     click('#appNav [data-view="interviews"]');
     setValue("interviewAnswer", "Na escola organizei um projeto em grupo, combinei as tarefas com colegas e aprendi a comunicar os próximos passos.");
     submit(document.querySelector('form[data-form="interview-practice"]'));
+    await waitFor(() => /Clareza/.test(document.querySelector("#appContent").textContent), "A revisão guiada não foi renderizada.");
     assert.equal(PlatformService.getInterviewHistory(candidate.id).length, 1);
-    assert.match(document.querySelector("#appContent").textContent, /não é inteligência artificial/i);
+    assert.match(document.querySelector("#appContent").textContent, /não atribui nota/i);
     assert.match(document.querySelector("#appContent").textContent, /Clareza/);
 
     click('#appNav [data-view="connections"]');
@@ -583,6 +588,7 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     assert.ok(document.querySelector(`[data-action="accept-connection"][data-id="${demoInvite.id}"]`));
     click(`[data-action="accept-connection"][data-id="${demoInvite.id}"]`);
     assert.equal(PlatformService.getConnection(demoInvite.id).status, "connected");
+    await waitFor(() => Boolean(document.querySelector(`#appContent form[data-form="connection-message"][data-connection-id="${demoInvite.id}"]`)), "A conversa não foi liberada após aceitar o convite.");
     const acceptedMessageForm = document.querySelector(`#appContent form[data-form="connection-message"][data-connection-id="${demoInvite.id}"]`);
     acceptedMessageForm.querySelector("textarea").value = "Confirmo o recebimento do convite e agradeço o contato demonstrativo.";
     submit(acceptedMessageForm);
@@ -629,6 +635,7 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     const connectionReport = PlatformService.getReports().find((report) => report.connectionId === candidateConnection.id);
     assert.ok(connectionReport);
     assert.equal(connectionReport.userId, "usr-demo-company");
+    await waitFor(() => [...document.querySelectorAll(".toast")].some((toast) => /Relato guardado apenas localmente/.test(toast.textContent)), "O relato da conexão não terminou de salvar.");
 
     click(`#appContent [data-action="block-connection"][data-id="${candidateConnection.id}"]`);
     click('#appModalContent [data-action="confirm-modal"]');
@@ -650,10 +657,13 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     PlatformService.saveCandidateSettings("usr-demo-candidate", { ...candidatePreferences, notifyNewJobs: true });
     const approve = document.querySelector(`[data-action="toggle-job-approval"][data-id="${job.id}"]`);
     click(approve);
+    await waitFor(() => document.querySelector(`[data-action="toggle-job-approval"][data-id="${job.id}"]`)?.dataset.approved === "false", "A aprovação da vaga não terminou.");
     assert.equal(PlatformService.getPublishedJobs().some((entry) => entry.id === job.id), true);
     click(`#appContent [data-action="toggle-job-approval"][data-id="${job.id}"]`);
+    await waitFor(() => document.querySelector(`[data-action="toggle-job-approval"][data-id="${job.id}"]`)?.dataset.approved === "true", "A suspensão da vaga não terminou.");
     assert.equal(PlatformService.getPublishedJobs().some((entry) => entry.id === job.id), false);
     click(`#appContent [data-action="toggle-job-approval"][data-id="${job.id}"]`);
+    await waitFor(() => document.querySelector(`[data-action="toggle-job-approval"][data-id="${job.id}"]`)?.dataset.approved === "false", "A segunda aprovação da vaga não terminou.");
     assert.equal(PlatformService.getPublishedJobs().some((entry) => entry.id === job.id), true);
     const jobNotifications = PlatformService.getCandidateNotifications("usr-demo-candidate")
       .filter((notification) => notification.type === "job" && notification.linkId === job.id);
@@ -661,10 +671,13 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
 
     click('#appNav [data-view="admin-companies"]');
     click('[data-action="toggle-company-verification"][data-id="company-demo"]');
+    await waitFor(() => document.querySelector('[data-action="toggle-company-verification"][data-id="company-demo"]')?.dataset.verified === "false", "A revisão da empresa não terminou.");
     assert.equal(PlatformService.getCompany("company-demo").verified, true);
     click('[data-action="toggle-company-active"][data-id="company-demo"]');
+    await waitFor(() => document.querySelector('[data-action="toggle-company-active"][data-id="company-demo"]')?.dataset.active === "true", "A desativação da empresa não terminou.");
     assert.equal(PlatformService.getCompany("company-demo").active, false);
     click('[data-action="toggle-company-active"][data-id="company-demo"]');
+    await waitFor(() => document.querySelector('[data-action="toggle-company-active"][data-id="company-demo"]')?.dataset.active === "false", "A reativação da empresa não terminou.");
     assert.equal(PlatformService.getCompany("company-demo").active, true);
 
     click('#appNav [data-view="admin-ads"]');
@@ -673,7 +686,8 @@ test("fluxos principais do SkillMatch funcionam em modo demonstrativo", async (t
     setValue("adTitle", "Aviso de teste", modal);
     setValue("adMessage", "Comunicado local para verificar a publicação no painel.", modal);
     submit(modal.querySelector('form[data-form="ad"]'));
-    assert.equal(PlatformService.getCandidateAds()[0].title, "Aviso de teste");
+    await waitFor(() => PlatformService.getCandidateAds()[0]?.title === "Aviso de teste", "O comunicado não foi salvo.");
+    await waitFor(() => [...document.querySelectorAll(".toast")].some((toast) => /Comunicado demonstrativo salvo/.test(toast.textContent)), "A publicação do comunicado não terminou.");
 
     click('#appNav [data-view="admin-reports"]');
     assert.match(document.querySelector("#appContent").textContent, /Teste local do formulário de relato/);

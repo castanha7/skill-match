@@ -43,7 +43,7 @@ if (APP_CONFIG.useApi) {
   $("#profilePhotoInput").disabled = true;
   $("#removePhotoButton").disabled = true;
   $(".avatar-actions label").textContent = "Foto indisponível na integração remota";
-  $(".photo-note").textContent = "A foto de perfil é armazenada somente no navegador no modo demonstrativo.";
+  $(".photo-note").textContent = "O envio de fotos ainda não está disponível para contas conectadas à plataforma.";
 }
 
 /* Máscara de telefone na edição */

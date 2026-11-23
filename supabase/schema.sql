@@ -1,8 +1,7 @@
 -- SkillMatch / Supabase (PostgreSQL)
--- Execute once in Supabase > SQL Editor. Public signup creates candidate accounts only;
--- a company account is assigned by the trusted API after validating its registration.
-
-create extension if not exists pgcrypto;
+-- Bootstrap schema for a new Supabase project. Safe to re-run: it preserves data and
+-- replaces SkillMatch triggers/policies. It never creates fake users or sample records.
+-- Public signup creates candidates; the trusted API provisions company accounts.
 
 create or replace function public.set_updated_at()
 returns trigger language plpgsql set search_path = '' as $$
@@ -26,7 +25,6 @@ create table if not exists public.profiles (
 -- discoverable candidate profile; the API only returns them with explicit consent.
 create table if not exists public.candidate_private (
   user_id uuid primary key references public.profiles(id) on delete cascade,
-  email text not null,
   birth_date date,
   updated_at timestamptz not null default now()
 );
@@ -59,54 +57,7 @@ create table if not exists public.candidate_profiles (
   experiences text[] not null default '{}',
   visible_to_companies boolean not null default false,
   visibility_consented_at timestamptz,
-  notify_new_jobs boolean not null default true,
-  distance_radius_km integer not null default 50 check (distance_radius_km between 1 and 250),
-  radar_city text,
-  radar_state char(2),
-  radar_area text,
-  radar_type text,
-  radar_modality text,
-  resume_storage_path text,
   updated_at timestamptz not null default now()
-);
-
-create table if not exists public.candidate_educations (
-  id text primary key default gen_random_uuid()::text,
-  user_id uuid not null references public.profiles(id) on delete cascade,
-  institution text not null,
-  course text,
-  education_level text not null,
-  status text not null default 'in_progress' check (status in ('in_progress','completed')),
-  started_on date,
-  ended_on date,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create table if not exists public.candidate_courses (
-  id text primary key default gen_random_uuid()::text,
-  user_id uuid not null references public.profiles(id) on delete cascade,
-  name text not null,
-  provider text,
-  workload_hours integer check (workload_hours is null or workload_hours between 0 and 10000),
-  completed_on date,
-  credential_url text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create table if not exists public.candidate_experiences (
-  id text primary key default gen_random_uuid()::text,
-  user_id uuid not null references public.profiles(id) on delete cascade,
-  organization text not null,
-  title text not null,
-  description text not null default '',
-  started_on date,
-  ended_on date,
-  current boolean not null default false,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  check (not current or ended_on is null)
 );
 
 create table if not exists public.company_profiles (
@@ -319,22 +270,29 @@ create table if not exists public.admin_audit (
   created_at timestamptz not null default now()
 );
 
+create index if not exists profiles_role_status_idx on public.profiles (role,status);
+create index if not exists companies_public_idx on public.company_profiles (state,city,name) where active=true and verified_at is not null;
 create index if not exists jobs_public_listing_idx on public.jobs (status, state, city, created_at desc);
 create index if not exists jobs_company_status_idx on public.jobs (company_id, status, created_at desc);
 create index if not exists applications_job_status_idx on public.applications (job_id, status, applied_at desc);
 create index if not exists applications_candidate_idx on public.applications (candidate_user_id, applied_at desc);
+create index if not exists connections_candidate_status_idx on public.connections (candidate_user_id,status,updated_at desc);
+create index if not exists connections_company_status_idx on public.connections (company_id,status,updated_at desc);
+create index if not exists saved_talents_candidate_idx on public.company_saved_talents (candidate_user_id,created_at desc);
+create index if not exists invitations_application_idx on public.interview_invitations (application_id);
+create index if not exists invitations_candidate_idx on public.interview_invitations (candidate_user_id, starts_at desc);
+create index if not exists invitations_company_idx on public.interview_invitations (company_id, starts_at desc);
+create index if not exists reports_open_idx on public.reports (status,created_at desc);
 create index if not exists notifications_user_unread_idx on public.notifications (user_id, read_at, created_at desc);
 create index if not exists messages_thread_idx on public.connection_messages (connection_id, created_at);
 create index if not exists messages_recipient_idx on public.connection_messages (recipient_user_id, read_at, created_at desc);
-create index if not exists invitations_candidate_idx on public.interview_invitations (candidate_user_id, starts_at desc);
-create index if not exists invitations_company_idx on public.interview_invitations (company_id, starts_at desc);
 create index if not exists candidate_skills_gin_idx on public.candidate_profiles using gin (skills);
 create index if not exists job_skills_gin_idx on public.jobs using gin (required_skills);
 
 do $$ declare t text; begin
   foreach t in array array[
-    'profiles','candidate_private','candidate_contacts','candidate_profiles','candidate_educations','candidate_courses',
-    'candidate_experiences','company_profiles','company_private','jobs','applications','connections',
+    'profiles','candidate_private','candidate_contacts','candidate_profiles',
+    'company_profiles','company_private','jobs','applications','connections',
     'interview_invitations','candidate_course_progress','candidate_settings','announcements'
   ] loop
     execute format('drop trigger if exists skillmatch_set_updated_at on public.%I', t);
@@ -356,6 +314,15 @@ create or replace function public.current_company_id()
 returns uuid language sql stable security definer set search_path = '' as $$
   select c.id from public.company_profiles c join public.profiles p on p.id=c.owner_user_id
   where c.owner_user_id=auth.uid() and c.active=true and p.role='company' and p.status='active' and p.terms_accepted_at is not null limit 1
+$$;
+
+create or replace function public.company_is_public(target_company_id uuid)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from public.company_profiles cp join public.profiles p on p.id=cp.owner_user_id
+    where cp.id=target_company_id and cp.active=true and cp.verified_at is not null
+      and p.role='company' and p.status='active' and p.terms_accepted_at is not null
+  )
 $$;
 
 create or replace function public.candidate_is_discoverable(target_user_id uuid)
@@ -405,9 +372,7 @@ begin
   values (new.id, 'candidate', coalesce(nullif(new.raw_user_meta_data->>'full_name',''), split_part(new.email,'@',1)),
     nullif(new.raw_user_meta_data->>'terms_accepted_at','')::timestamptz)
   on conflict (id) do nothing;
-  insert into public.candidate_private(user_id, email)
-  values (new.id, lower(new.email))
-  on conflict (user_id) do update set email=excluded.email;
+  insert into public.candidate_private(user_id) values (new.id) on conflict (user_id) do nothing;
   insert into public.candidate_contacts(user_id, email)
   values (new.id, lower(new.email))
   on conflict (user_id) do update set email=excluded.email;
@@ -425,7 +390,6 @@ create or replace function public.sync_auth_email_to_private_profiles()
 returns trigger language plpgsql security definer set search_path = '' as $$
 begin
   if new.email is distinct from old.email then
-    update public.candidate_private set email=lower(new.email), updated_at=now() where user_id=new.id;
     update public.candidate_contacts set email=lower(new.email), updated_at=now() where user_id=new.id;
   end if;
   return new;
@@ -516,14 +480,11 @@ for each row execute function public.notify_message();
 
 create or replace function public.notify_interview_invitation()
 returns trigger language plpgsql security definer set search_path = '' as $$
-declare recipient uuid;
 begin
   if tg_op='INSERT' then
-    recipient := new.candidate_user_id;
     insert into public.notifications(user_id,type,title,body,target_view,target_id)
-    values (recipient,'interview','Convite para entrevista','Uma empresa enviou um convite para entrevista.','connections',new.id);
+    values (new.candidate_user_id,'interview','Convite para entrevista','Uma empresa enviou um convite para entrevista.','connections',new.id);
   elsif new.status is distinct from old.status then
-    recipient := case when auth.uid()=new.candidate_user_id then new.company_id::text::uuid else new.candidate_user_id end;
     insert into public.notifications(user_id,type,title,body,target_view,target_id)
     select case when auth.uid()=new.candidate_user_id then cp.owner_user_id else new.candidate_user_id end,
       'interview','Resposta ao convite','O status de um convite de entrevista foi atualizado.','company-connections',new.id
@@ -541,7 +502,7 @@ for each row execute function public.notify_interview_invitation();
 -- listings and explicitly discoverable business/profile data are available to other users.
 do $$ declare t text; begin
   foreach t in array array[
-    'profiles','candidate_private','candidate_contacts','candidate_profiles','candidate_educations','candidate_courses','candidate_experiences',
+    'profiles','candidate_private','candidate_contacts','candidate_profiles',
     'company_profiles','company_private','jobs','applications','application_events','candidate_favorites','company_saved_talents',
     'admin_audit',
     'connections','connection_messages','interview_invitations','notifications','candidate_interview_sessions',
@@ -551,81 +512,95 @@ do $$ declare t text; begin
   end loop;
 end $$;
 
+drop policy if exists profiles_read_self_or_admin on public.profiles;
 create policy profiles_read_self_or_admin on public.profiles for select to authenticated
   using (id=auth.uid() or public.is_platform_admin());
+drop policy if exists profiles_read_authorized_candidate on public.profiles;
 create policy profiles_read_authorized_candidate on public.profiles for select to authenticated
   using (role='candidate' and public.current_account_role()='company' and public.can_view_candidate(id));
+drop policy if exists profiles_update_self on public.profiles;
 create policy profiles_update_self on public.profiles for update to authenticated
   using (id=auth.uid() and status='active') with check (id=auth.uid() and status='active');
+drop policy if exists candidate_private_self_read on public.candidate_private;
 create policy candidate_private_self_read on public.candidate_private for select to authenticated
   using (user_id=auth.uid() or public.is_platform_admin());
+drop policy if exists candidate_private_self_update on public.candidate_private;
 create policy candidate_private_self_update on public.candidate_private for update to authenticated
   using (user_id=auth.uid()) with check (user_id=auth.uid());
+drop policy if exists candidate_contacts_authorized_read on public.candidate_contacts;
 create policy candidate_contacts_authorized_read on public.candidate_contacts for select to authenticated
   using (user_id=auth.uid() or public.is_platform_admin() or (public.current_account_role()='company' and public.can_view_candidate_contact(user_id)));
+drop policy if exists candidate_contacts_self_update on public.candidate_contacts;
 create policy candidate_contacts_self_update on public.candidate_contacts for update to authenticated
   using (user_id=auth.uid()) with check (user_id=auth.uid());
+drop policy if exists candidate_profiles_read_authorized on public.candidate_profiles;
 create policy candidate_profiles_read_authorized on public.candidate_profiles for select to authenticated
   using (public.can_view_candidate(user_id));
+drop policy if exists candidate_profiles_insert_self on public.candidate_profiles;
 create policy candidate_profiles_insert_self on public.candidate_profiles for insert to authenticated
   with check (user_id=auth.uid() and public.current_account_role()='candidate');
+drop policy if exists candidate_profiles_update_self on public.candidate_profiles;
 create policy candidate_profiles_update_self on public.candidate_profiles for update to authenticated
   using (user_id=auth.uid() and public.current_account_role()='candidate')
   with check (user_id=auth.uid() and public.current_account_role()='candidate');
 
-create policy candidate_educations_read_authorized on public.candidate_educations for select to authenticated using (public.can_view_candidate(user_id));
-create policy candidate_educations_owner_all on public.candidate_educations for all to authenticated
-  using (user_id=auth.uid() and public.current_account_role()='candidate') with check (user_id=auth.uid() and public.current_account_role()='candidate');
-create policy candidate_courses_read_authorized on public.candidate_courses for select to authenticated using (public.can_view_candidate(user_id));
-create policy candidate_courses_owner_all on public.candidate_courses for all to authenticated
-  using (user_id=auth.uid() and public.current_account_role()='candidate') with check (user_id=auth.uid() and public.current_account_role()='candidate');
-create policy candidate_experiences_read_authorized on public.candidate_experiences for select to authenticated using (public.can_view_candidate(user_id));
-create policy candidate_experiences_owner_all on public.candidate_experiences for all to authenticated
-  using (user_id=auth.uid() and public.current_account_role()='candidate') with check (user_id=auth.uid() and public.current_account_role()='candidate');
-
+drop policy if exists company_profiles_read_active_or_owner on public.company_profiles;
 create policy company_profiles_read_active_or_owner on public.company_profiles for select to anon, authenticated
-  using ((active=true and verified_at is not null) or owner_user_id=auth.uid() or public.is_platform_admin());
+  using (public.company_is_public(id) or owner_user_id=auth.uid() or public.is_platform_admin());
+drop policy if exists company_profiles_owner_insert on public.company_profiles;
 create policy company_profiles_owner_insert on public.company_profiles for insert to authenticated
   with check (owner_user_id=auth.uid() and public.current_account_role()='company');
+drop policy if exists company_profiles_owner_update on public.company_profiles;
 create policy company_profiles_owner_update on public.company_profiles for update to authenticated
   using (owner_user_id=auth.uid() and public.current_account_role()='company')
   with check (owner_user_id=auth.uid() and public.current_account_role()='company');
+drop policy if exists company_private_owner_read on public.company_private;
 create policy company_private_owner_read on public.company_private for select to authenticated
   using (public.is_platform_admin() or exists(select 1 from public.company_profiles cp where cp.id=company_id and cp.owner_user_id=auth.uid()));
+drop policy if exists company_private_owner_update on public.company_private;
 create policy company_private_owner_update on public.company_private for update to authenticated
   using (exists(select 1 from public.company_profiles cp where cp.id=company_id and cp.owner_user_id=auth.uid() and public.current_account_role()='company'))
   with check (exists(select 1 from public.company_profiles cp where cp.id=company_id and cp.owner_user_id=auth.uid() and public.current_account_role()='company'));
 
+drop policy if exists jobs_read_public_owner_admin on public.jobs;
 create policy jobs_read_public_owner_admin on public.jobs for select to anon, authenticated
-  using ((status='published' and (active_until is null or active_until>now())
-      and exists(select 1 from public.company_profiles cp join public.profiles p on p.id=cp.owner_user_id
-        where cp.id=company_id and cp.active=true and cp.verified_at is not null and p.status='active' and p.terms_accepted_at is not null))
+  using ((status='published' and (active_until is null or active_until>now()) and public.company_is_public(company_id))
     or company_id=public.current_company_id() or public.is_platform_admin());
+drop policy if exists jobs_company_insert on public.jobs;
 create policy jobs_company_insert on public.jobs for insert to authenticated
   with check (company_id=public.current_company_id() and public.current_account_role()='company' and status in ('draft','pending_review'));
+drop policy if exists jobs_company_update on public.jobs;
 create policy jobs_company_update on public.jobs for update to authenticated
   using (company_id=public.current_company_id() and public.current_account_role()='company')
   with check (company_id=public.current_company_id() and public.current_account_role()='company' and status<>'published');
+drop policy if exists jobs_company_delete on public.jobs;
 create policy jobs_company_delete on public.jobs for delete to authenticated
   using (company_id=public.current_company_id() and public.current_account_role()='company' and status<>'published');
 
+drop policy if exists applications_read_participants on public.applications;
 create policy applications_read_participants on public.applications for select to authenticated
   using (candidate_user_id=auth.uid() or exists(select 1 from public.jobs j where j.id=job_id and j.company_id=public.current_company_id()) or public.is_platform_admin());
+drop policy if exists applications_candidate_insert on public.applications;
 create policy applications_candidate_insert on public.applications for insert to authenticated
   with check (candidate_user_id=auth.uid() and public.current_account_role()='candidate'
     and exists(select 1 from public.jobs j where j.id=job_id and j.status='published' and (j.active_until is null or j.active_until>now())));
+drop policy if exists applications_company_update on public.applications;
 create policy applications_company_update on public.applications for update to authenticated
   using (exists(select 1 from public.jobs j where j.id=job_id and j.company_id=public.current_company_id()) and public.current_account_role()='company')
   with check (exists(select 1 from public.jobs j where j.id=job_id and j.company_id=public.current_company_id()) and public.current_account_role()='company');
+drop policy if exists applications_candidate_withdraw on public.applications;
 create policy applications_candidate_withdraw on public.applications for update to authenticated
   using (candidate_user_id=auth.uid() and status in ('submitted','in_review','interview'))
   with check (candidate_user_id=auth.uid() and status='withdrawn');
+drop policy if exists application_events_read_participants on public.application_events;
 create policy application_events_read_participants on public.application_events for select to authenticated
   using (exists(select 1 from public.applications a where a.id=application_id and (a.candidate_user_id=auth.uid() or exists(select 1 from public.jobs j where j.id=a.job_id and j.company_id=public.current_company_id()))) or public.is_platform_admin());
 
+drop policy if exists favorites_owner_all on public.candidate_favorites;
 create policy favorites_owner_all on public.candidate_favorites for all to authenticated
   using (candidate_user_id=auth.uid() and public.current_account_role()='candidate')
   with check (candidate_user_id=auth.uid() and public.current_account_role()='candidate');
+drop policy if exists company_saved_talents_owner_all on public.company_saved_talents;
 create policy company_saved_talents_owner_all on public.company_saved_talents for all to authenticated
   using (company_id=public.current_company_id() and public.current_account_role()='company'
     and exists(select 1 from public.company_profiles cp where cp.id=public.current_company_id() and cp.verified_at is not null))
@@ -633,92 +608,120 @@ create policy company_saved_talents_owner_all on public.company_saved_talents fo
     and exists(select 1 from public.company_profiles cp where cp.id=public.current_company_id() and cp.verified_at is not null)
     and public.candidate_is_discoverable(candidate_user_id));
 
+drop policy if exists connections_read_participant on public.connections;
 create policy connections_read_participant on public.connections for select to authenticated
   using (candidate_user_id=auth.uid() or company_id=public.current_company_id() or public.is_platform_admin());
+drop policy if exists connections_insert_candidate on public.connections;
 create policy connections_insert_candidate on public.connections for insert to authenticated
   with check (candidate_user_id=auth.uid() and initiated_by='candidate' and status='connected'
     and public.current_account_role()='candidate'
     and exists(select 1 from public.company_profiles cp where cp.id=company_id and cp.active=true and cp.verified_at is not null));
+drop policy if exists connections_insert_company on public.connections;
 create policy connections_insert_company on public.connections for insert to authenticated
   with check (company_id=public.current_company_id() and initiated_by='company' and status='pending'
     and public.current_account_role()='company' and public.candidate_is_discoverable(candidate_user_id)
     and exists(select 1 from public.company_profiles cp where cp.id=company_id and cp.verified_at is not null));
+drop policy if exists connections_update_candidate_response on public.connections;
 create policy connections_update_candidate_response on public.connections for update to authenticated
   using (candidate_user_id=auth.uid() and status='pending' and initiated_by='company')
   with check (candidate_user_id=auth.uid() and initiated_by='company' and status in ('connected','declined'));
+drop policy if exists connections_update_participant_block on public.connections;
 create policy connections_update_participant_block on public.connections for update to authenticated
   using ((candidate_user_id=auth.uid() or company_id=public.current_company_id()) and status not in ('blocked','ended'))
   with check ((candidate_user_id=auth.uid() or company_id=public.current_company_id()) and status='blocked' and blocked_by_user_id=auth.uid());
+drop policy if exists connections_update_company_end on public.connections;
 create policy connections_update_company_end on public.connections for update to authenticated
   using (company_id=public.current_company_id() and status='connected')
   with check (company_id=public.current_company_id() and status='ended');
 
+drop policy if exists connection_messages_read_connected_participant on public.connection_messages;
 create policy connection_messages_read_connected_participant on public.connection_messages for select to authenticated
   using (exists(select 1 from public.connections c join public.company_profiles cp on cp.id=c.company_id
     where c.id=connection_id and c.status='connected' and cp.active=true and cp.verified_at is not null
       and (c.candidate_user_id=auth.uid() or c.company_id=public.current_company_id())) or public.is_platform_admin());
+drop policy if exists connection_messages_insert_connected_participant on public.connection_messages;
 create policy connection_messages_insert_connected_participant on public.connection_messages for insert to authenticated
   with check (sender_user_id=auth.uid() and exists(select 1 from public.connections c join public.company_profiles cp on cp.id=c.company_id
     where c.id=connection_id and c.status='connected' and cp.active=true and cp.verified_at is not null
     and (c.candidate_user_id=auth.uid() or c.company_id=public.current_company_id())
     and ((c.candidate_user_id=auth.uid() and recipient_user_id=cp.owner_user_id)
       or (c.company_id=public.current_company_id() and recipient_user_id=c.candidate_user_id))));
+drop policy if exists connection_messages_recipient_read on public.connection_messages;
 create policy connection_messages_recipient_read on public.connection_messages for update to authenticated
   using (recipient_user_id=auth.uid()) with check (recipient_user_id=auth.uid());
 
+drop policy if exists invitations_read_participant on public.interview_invitations;
 create policy invitations_read_participant on public.interview_invitations for select to authenticated
   using (candidate_user_id=auth.uid() or company_id=public.current_company_id() or public.is_platform_admin());
+drop policy if exists invitations_company_insert on public.interview_invitations;
 create policy invitations_company_insert on public.interview_invitations for insert to authenticated
   with check (company_id=public.current_company_id() and public.current_account_role()='company'
     and exists(select 1 from public.applications a join public.jobs j on j.id=a.job_id
       where a.id=interview_invitations.application_id
         and a.candidate_user_id=interview_invitations.candidate_user_id
         and j.company_id=interview_invitations.company_id));
+drop policy if exists invitations_candidate_update on public.interview_invitations;
 create policy invitations_candidate_update on public.interview_invitations for update to authenticated
   using (candidate_user_id=auth.uid() and status='pending')
   with check (candidate_user_id=auth.uid() and status in ('accepted','declined'));
+drop policy if exists invitations_company_cancel on public.interview_invitations;
 create policy invitations_company_cancel on public.interview_invitations for update to authenticated
   using (company_id=public.current_company_id())
   with check (company_id=public.current_company_id() and status='cancelled');
 
+drop policy if exists notifications_owner_read on public.notifications;
 create policy notifications_owner_read on public.notifications for select to authenticated using (user_id=auth.uid() or public.is_platform_admin());
+drop policy if exists notifications_owner_mark_read on public.notifications;
 create policy notifications_owner_mark_read on public.notifications for update to authenticated
   using (user_id=auth.uid()) with check (user_id=auth.uid());
+drop policy if exists interview_sessions_owner_all on public.candidate_interview_sessions;
 create policy interview_sessions_owner_all on public.candidate_interview_sessions for all to authenticated
   using (candidate_user_id=auth.uid() and public.current_account_role()='candidate')
   with check (candidate_user_id=auth.uid() and public.current_account_role()='candidate');
+drop policy if exists course_progress_owner_all on public.candidate_course_progress;
 create policy course_progress_owner_all on public.candidate_course_progress for all to authenticated
   using (candidate_user_id=auth.uid() and public.current_account_role()='candidate')
   with check (candidate_user_id=auth.uid() and public.current_account_role()='candidate');
+drop policy if exists settings_owner_all on public.candidate_settings;
 create policy settings_owner_all on public.candidate_settings for all to authenticated
   using (candidate_user_id=auth.uid() and public.current_account_role()='candidate')
   with check (candidate_user_id=auth.uid() and public.current_account_role()='candidate');
+drop policy if exists reports_owner_insert on public.reports;
 create policy reports_owner_insert on public.reports for insert to authenticated
   with check (reporter_user_id=auth.uid());
+drop policy if exists reports_owner_read_admin on public.reports;
 create policy reports_owner_read_admin on public.reports for select to authenticated
   using (reporter_user_id=auth.uid() or public.is_platform_admin());
+drop policy if exists announcements_active_read on public.announcements;
 create policy announcements_active_read on public.announcements for select to authenticated
   using (active=true or public.is_platform_admin());
 
 -- Restrict both table and column privileges. RLS filters rows; column grants keep
 -- hidden company identifiers, screening metadata, and contact details private.
 revoke all on public.profiles, public.candidate_private, public.candidate_contacts, public.candidate_profiles,
-  public.candidate_educations, public.candidate_courses, public.candidate_experiences, public.company_profiles,
-  public.company_private, public.jobs, public.applications, public.application_events, public.candidate_favorites,
-  public.company_saved_talents, public.connections, public.connection_messages, public.interview_invitations,
-  public.notifications, public.candidate_interview_sessions, public.candidate_course_progress,
-  public.candidate_settings, public.reports, public.announcements, public.admin_audit from anon, authenticated;
+  public.company_profiles, public.company_private, public.jobs, public.applications, public.application_events,
+  public.candidate_favorites, public.company_saved_talents, public.connections, public.connection_messages,
+  public.interview_invitations, public.notifications, public.candidate_interview_sessions,
+  public.candidate_course_progress, public.candidate_settings, public.reports, public.announcements,
+  public.admin_audit from anon, authenticated;
+grant usage on schema public to anon, authenticated, service_role;
+grant all privileges on public.profiles, public.candidate_private, public.candidate_contacts, public.candidate_profiles,
+  public.company_profiles, public.company_private, public.jobs, public.applications, public.application_events,
+  public.candidate_favorites, public.company_saved_talents, public.connections, public.connection_messages,
+  public.interview_invitations, public.notifications, public.candidate_interview_sessions,
+  public.candidate_course_progress, public.candidate_settings, public.reports, public.announcements,
+  public.admin_audit to service_role;
 
 grant select (id,role,full_name,created_at) on public.profiles to authenticated;
-grant update (full_name,terms_accepted_at) on public.profiles to authenticated;
-grant select on public.candidate_profiles, public.candidate_educations, public.candidate_courses, public.candidate_experiences to authenticated;
-grant insert (user_id,city,state,education_level,course,institution,area_interest,opportunity_types,availability,summary,skills,linkedin,github,portfolio,courses,experiences,visible_to_companies,visibility_consented_at,notify_new_jobs,distance_radius_km,radar_city,radar_state,radar_area,radar_type,radar_modality,resume_storage_path) on public.candidate_profiles to authenticated;
-grant update (city,state,education_level,course,institution,area_interest,opportunity_types,availability,summary,skills,linkedin,github,portfolio,courses,experiences,visible_to_companies,visibility_consented_at,notify_new_jobs,distance_radius_km,radar_city,radar_state,radar_area,radar_type,radar_modality,resume_storage_path,updated_at) on public.candidate_profiles to authenticated;
+-- Acceptance timestamps are written by the trusted registration/admin paths, not by clients.
+grant update (full_name) on public.profiles to authenticated;
+grant select on public.candidate_profiles to authenticated;
+grant insert (user_id,city,state,education_level,course,institution,area_interest,opportunity_types,availability,summary,skills,linkedin,github,portfolio,courses,experiences,visible_to_companies,visibility_consented_at) on public.candidate_profiles to authenticated;
+grant update (city,state,education_level,course,institution,area_interest,opportunity_types,availability,summary,skills,linkedin,github,portfolio,courses,experiences,visible_to_companies,visibility_consented_at,updated_at) on public.candidate_profiles to authenticated;
 grant select on public.candidate_private to authenticated;
 grant update (birth_date,updated_at) on public.candidate_private to authenticated;
 grant select (user_id,phone,contact_sharing_consent,contact_consented_at,updated_at) on public.candidate_contacts to authenticated;
 grant update (phone,contact_sharing_consent,contact_consented_at,updated_at) on public.candidate_contacts to authenticated;
-grant insert, update, delete on public.candidate_educations, public.candidate_courses, public.candidate_experiences to authenticated;
 grant select (id,name,sector,description,city,state,website,public_contact_email,verified_at,active,created_at,updated_at) on public.company_profiles to anon, authenticated;
 grant insert (owner_user_id,name,sector,description,city,state,website,public_contact_email) on public.company_profiles to authenticated;
 grant update (name,sector,description,city,state,website,public_contact_email,updated_at) on public.company_profiles to authenticated;
@@ -751,29 +754,21 @@ grant insert, update on public.candidate_settings to authenticated;
 grant insert (id,reporter_user_id,category,description,connection_id) on public.reports to authenticated;
 grant select (id,title,message,active,created_at,updated_at) on public.announcements to authenticated;
 
-grant usage, select on sequence public.application_events_id_seq to authenticated;
+-- Remove PostgreSQL's default PUBLIC execute on helper functions. Anonymous access
+-- needs only the account/company predicates used by public-listing RLS policies.
+revoke execute on function public.current_account_role() from public;
+revoke execute on function public.is_platform_admin() from public;
+revoke execute on function public.current_company_id() from public;
+revoke execute on function public.company_is_public(uuid) from public;
+revoke execute on function public.candidate_is_discoverable(uuid) from public;
+revoke execute on function public.company_has_candidate_relationship(uuid) from public;
+revoke execute on function public.can_view_candidate(uuid) from public;
+revoke execute on function public.can_view_candidate_contact(uuid) from public;
 grant execute on function public.current_account_role() to anon, authenticated;
 grant execute on function public.is_platform_admin() to anon, authenticated;
 grant execute on function public.current_company_id() to anon, authenticated;
+grant execute on function public.company_is_public(uuid) to anon, authenticated;
 grant execute on function public.candidate_is_discoverable(uuid) to authenticated;
 grant execute on function public.company_has_candidate_relationship(uuid) to authenticated;
 grant execute on function public.can_view_candidate(uuid) to authenticated;
 grant execute on function public.can_view_candidate_contact(uuid) to authenticated;
-
--- Private resume bucket. The API owns upload/delete flows; users cannot list other files.
-insert into storage.buckets (id,name,public,file_size_limit,allowed_mime_types)
-values ('candidate-files','candidate-files',false,10485760,array['application/pdf','image/jpeg','image/png','image/webp'])
-on conflict (id) do update set public=false, file_size_limit=10485760, allowed_mime_types=excluded.allowed_mime_types;
-create policy candidate_files_owner_select on storage.objects for select to authenticated
-  using (bucket_id='candidate-files' and (storage.foldername(name))[1]=auth.uid()::text);
-create policy candidate_files_owner_insert on storage.objects for insert to authenticated
-  with check (bucket_id='candidate-files' and (storage.foldername(name))[1]=auth.uid()::text);
-create policy candidate_files_owner_update on storage.objects for update to authenticated
-  using (bucket_id='candidate-files' and (storage.foldername(name))[1]=auth.uid()::text)
-  with check (bucket_id='candidate-files' and (storage.foldername(name))[1]=auth.uid()::text);
-create policy candidate_files_owner_delete on storage.objects for delete to authenticated
-  using (bucket_id='candidate-files' and (storage.foldername(name))[1]=auth.uid()::text);
-
--- To provision the first administrator, create/confirm the account through the site,
--- then run this once from Supabase SQL Editor (never expose an admin signup endpoint):
--- update public.profiles set role='admin' where id=(select id from auth.users where email=lower('ADMIN_EMAIL'));

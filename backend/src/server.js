@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -9,10 +11,24 @@ import aiRoutes from './routes/supabase-ai.js';
 import { createAnonymousClient, isSupabaseConfigured } from './services/supabase.js';
 
 const app = express();
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const publicPages = new Map([
+  ['/', 'index.html'],
+  ['/index.html', 'index.html'],
+  ['/login.html', 'login.html'],
+  ['/cadastro.html', 'cadastro.html'],
+  ['/cadastro-empresa.html', 'cadastro-empresa.html'],
+  ['/painel.html', 'painel.html'],
+  ['/perfil.html', 'perfil.html'],
+  ['/privacidade.html', 'privacidade.html'],
+  ['/termos.html', 'termos.html'],
+  ['/auth-callback.html', 'auth-callback.html'],
+]);
 app.disable('x-powered-by');
-app.set('trust proxy', Number(process.env.TRUST_PROXY || 1));
+const proxyHops = Number(process.env.TRUST_PROXY || 0);
+app.set('trust proxy', Number.isInteger(proxyHops) && proxyHops >= 0 ? proxyHops : false);
 app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
-const origins = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173')
+const origins = (process.env.FRONTEND_ORIGIN || 'http://localhost:3000')
   .split(',').map((item) => item.trim()).filter(Boolean);
 app.use(cors({
   origin(origin, callback) {
@@ -37,6 +53,12 @@ app.get('/api/health', async (_req, res) => {
     return res.status(503).json({ status: 'degraded', database: 'unavailable' });
   }
 });
+
+for (const [route, page] of publicPages) {
+  app.get(route, (_req, res, next) => res.sendFile(path.join(projectRoot, page), (error) => error && next(error)));
+}
+app.use('/assets', express.static(path.join(projectRoot, 'assets'), { dotfiles: 'deny', index: false, fallthrough: true }));
+app.use('/shared', express.static(path.join(projectRoot, 'shared'), { dotfiles: 'deny', index: false, fallthrough: true }));
 app.use((_req, res) => res.status(404).json({ message: 'Rota não encontrada.' }));
 app.use((error, _req, res, _next) => {
   const status = Number(error.status) || 500;

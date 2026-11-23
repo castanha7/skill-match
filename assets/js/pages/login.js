@@ -39,8 +39,16 @@ try {
 
 initPasswordToggles();
 const params = new URLSearchParams(window.location.search);
+const demoBox = $(".demo-box");
+const demoDivider = $("#demoDivider");
+if (APP_CONFIG.demoMode) {
+  demoBox?.removeAttribute("hidden");
+  demoDivider?.removeAttribute("hidden");
+} else {
+  demoBox?.setAttribute("hidden", "");
+  demoDivider?.setAttribute("hidden", "");
+}
 if (APP_CONFIG.useApi) {
-  $(".demo-account-grid")?.setAttribute("hidden", "");
   forgotModal.querySelector(".modal > p")?.replaceChildren(document.createTextNode("Informe o e-mail da sua conta. Se houver uma conta para esse endereço, o serviço enviará instruções seguras de recuperação."));
   resetRequestForm.querySelector('[type="submit"]').textContent = "Enviar instruções";
 }

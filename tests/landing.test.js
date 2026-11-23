@@ -19,6 +19,7 @@ test('página pública mostra oportunidades demonstrativas e busca, filtro e ace
   const html = readFileSync(resolve(root, 'index.html'), 'utf8');
   assert.match(html, /Suas habilidades\. Sua oportunidade\./);
   const dom = new JSDOM(html, { url: 'http://localhost/', pretendToBeVisual: true });
+  globalThis.SKILLMATCH_CONFIG = { mode: 'demo' }; // Fixtures locais apenas para testar a interface.
   globalThis.window = dom.window;
   globalThis.document = dom.window.document;
   globalThis.localStorage = dom.window.localStorage;
@@ -33,7 +34,7 @@ test('página pública mostra oportunidades demonstrativas e busca, filtro e ace
   const landingCss = readFileSync(resolve(root, 'assets/css/landing.css'), 'utf8');
   assert.doesNotMatch(landingCss, /\.floating-note\s*\{[^}]*\banimation(?:-name)?\s*:/s);
   assert.match(document.querySelector('.public-job-card').textContent, /R\$\s?1\.200/);
-  assert.match(document.querySelector('#catalogNotice').textContent, /Nenhuma vaga real foi pesquisada ou confirmada/);
+  assert.match(document.querySelector('#catalogNotice').textContent, /dados demonstrativos e não representam vagas confirmadas/);
   assert.match(document.querySelector('#publicResultCount').textContent, /4 oportunidades demonstrativas/);
 
   const keyword = document.querySelector('#publicKeyword');

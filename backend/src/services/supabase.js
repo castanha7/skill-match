@@ -12,20 +12,29 @@ const authOptions = {
 export function supabaseEnvironment() {
   return {
     url: String(process.env.SUPABASE_URL || '').trim().replace(/\/$/, ''),
-    anonKey: String(process.env.SUPABASE_ANON_KEY || '').trim(),
-    serviceRoleKey: String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim(),
+    anonKey: String(process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || '').trim(),
+    serviceRoleKey: String(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim(),
   };
+}
+
+function validSupabaseUrl(value) {
+  try {
+    const url = new URL(value);
+    const localHost = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+    return (url.protocol === 'https:' || (url.protocol === 'http:' && localHost))
+      && !url.username && !url.password && !url.search && !url.hash;
+  } catch { return false; }
 }
 
 export function isSupabaseConfigured() {
   const { url, anonKey, serviceRoleKey } = supabaseEnvironment();
-  return Boolean(url && anonKey && serviceRoleKey);
+  return Boolean(validSupabaseUrl(url) && anonKey && serviceRoleKey);
 }
 
 export function requireSupabaseConfig() {
   const config = supabaseEnvironment();
-  if (!config.url || !config.anonKey || !config.serviceRoleKey) {
-    const error = new Error('Supabase ainda não está configurado no servidor. Preencha SUPABASE_URL, SUPABASE_ANON_KEY e SUPABASE_SERVICE_ROLE_KEY no backend/.env.');
+  if (!validSupabaseUrl(config.url) || !config.anonKey || !config.serviceRoleKey) {
+    const error = new Error('Supabase ainda não está configurado corretamente no servidor. Preencha SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY e SUPABASE_SECRET_KEY em backend/.env (ou use os nomes legados ANON_KEY e SERVICE_ROLE_KEY).');
     error.status = 503;
     throw error;
   }

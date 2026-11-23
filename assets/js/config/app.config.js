@@ -1,6 +1,7 @@
-const requestedApiBase = String(
+const document = globalThis.document;
+const explicitApiBase = String(
   globalThis.SKILLMATCH_CONFIG?.apiBaseUrl
-  || globalThis.document?.querySelector('meta[name="skillmatch-api-base"]')?.content
+  || document?.querySelector('meta[name="skillmatch-api-base"]')?.content
   || '',
 ).trim().replace(/\/$/, '');
 
@@ -14,17 +15,23 @@ function isSafeApiBase(value) {
   } catch { return false; }
 }
 
-const configuredApiBase = isSafeApiBase(requestedApiBase) ? requestedApiBase : '';
+const explicitApiIsValid = isSafeApiBase(explicitApiBase);
+const pageOrigin = String(document?.location?.origin || '').replace(/\/$/, '');
+const configuredApiBase = explicitApiBase
+  ? (explicitApiIsValid ? explicitApiBase : '')
+  : (isSafeApiBase(pageOrigin) ? pageOrigin : '');
+const demoMode = globalThis.SKILLMATCH_CONFIG?.mode === 'demo';
 
 /**
- * Configuração pública do frontend. A URL da API não é um segredo; chaves
- * Supabase service-role e credenciais de IA pertencem exclusivamente ao backend.
- * Se não houver URL, as contas demonstrativas locais continuam disponíveis.
+ * A API é o modo padrão. O frontend não persiste dados de produto no navegador:
+ * somente uma configuração explícita de teste (SKILLMATCH_CONFIG.mode = "demo")
+ * ativa os fixtures locais. Segredos Supabase ficam exclusivamente no backend.
  */
 export const APP_CONFIG = {
   appName: "SkillMatch",
   slogan: "Suas habilidades. Sua oportunidade.",
-  useApi: Boolean(configuredApiBase),
+  demoMode,
+  useApi: !demoMode,
   apiBaseUrl: configuredApiBase,
   storageKeys: {
     users: "skillmatch:users",

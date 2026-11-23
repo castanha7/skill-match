@@ -146,7 +146,7 @@ async function fullCandidateForUser(req) {
   if (profileError) throw authError(profileError);
   const [{ data: candidate, error: candidateError }, { data: privateData, error: privateError }, { data: contacts, error: contactsError }] = await Promise.all([
     req.adminSupabase.from('candidate_profiles').select('*').eq('user_id', req.user.id).maybeSingle(),
-    req.adminSupabase.from('candidate_private').select('email,birth_date').eq('user_id', req.user.id).maybeSingle(),
+    req.adminSupabase.from('candidate_private').select('birth_date').eq('user_id', req.user.id).maybeSingle(),
     req.adminSupabase.from('candidate_contacts').select('phone,contact_sharing_consent').eq('user_id', req.user.id).maybeSingle(),
   ]);
   for (const error of [candidateError, privateError, contactsError]) if (error) throw authError(error);

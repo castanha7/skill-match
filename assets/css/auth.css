@@ -87,6 +87,7 @@
 .link-button { border: 0; padding: 0; color: var(--blue-600); background: transparent; font: 600 .88rem var(--font-body); text-decoration: underline; text-underline-offset: 2px; }
 .link-button:hover { color: var(--navy-800); }
 .divider { display: flex; align-items: center; gap: 1rem; color: var(--text-faint); font-size: .8rem; margin: 1.5rem 0; }
+.divider[hidden], .demo-box[hidden] { display: none; }
 .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
 
 /* contas demonstrativas */

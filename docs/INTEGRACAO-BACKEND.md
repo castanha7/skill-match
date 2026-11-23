@@ -1,102 +1,121 @@
-# SkillMatch: backend, busca de vagas e integrações
+# Configuração do SkillMatch com Supabase
 
-## Estado desta implementação
+Este guia conecta o SkillMatch ao projeto Supabase existente usando o backend Express incluído no repositório. O frontend não recebe a chave secreta do Supabase. O schema cria somente as tabelas utilizadas pela API; não insere usuários, empresas, vagas ou outros registros fictícios.
 
-O projeto preserva o frontend e os serviços demonstrativos preexistentes. Foi acrescentado `backend/`, uma API Express/MySQL separada. O backend não foi inicializado contra um banco real nesta sessão, porque não há serviço/credenciais MySQL nem provedor externo configurados. Há testes unitários com provedor de IA simulado, mas não testes de integração HTTP/MySQL.
+> A configuração no código não significa que o projeto já esteja conectado. As credenciais reais ficam no servidor do usuário, e o passo de verificação abaixo deve ser feito após configurá-las.
 
-O cliente de rede público lê a meta tag `skillmatch-api-base` somente na página inicial e tenta `GET /api/jobs` quando ela contém uma URL. As operações autenticadas nas telas continuam usando demonstração local; apenas apontar a meta tag **não migra** cadastro/login, perfil, candidaturas, empresa ou administração para o banco.
+## 1. Pré-requisitos
 
-O cadastro empresarial do frontend exige CNPJ e verifica o formato e os dígitos verificadores (incluindo o formato alfanumérico), tanto na validação da interface quanto no serviço local. O dado fica no armazenamento demonstrativo do navegador. Essa validação matemática **não consulta a Receita Federal** e não confirma existência, situação cadastral, titularidade nem regularidade. A API também valida e aplica unicidade ao CNPJ, mas não realiza verificação oficial.
+- Projeto Supabase criado.
+- Node.js 20 ou superior e npm.
+- Acesso ao SQL Editor e às configurações de API e Authentication do projeto Supabase.
+- Um servidor Node/Express para hospedar a API. GitHub Pages hospeda apenas arquivos estáticos e não executa este backend.
 
-## Rotas já implementadas
+## 2. Criar as tabelas e políticas
 
-| Método | Rota | Acesso | Comportamento |
-|---|---|---|---|
-| `GET` | `/api/health` | Público | Verifica conectividade com MySQL sem revelar detalhes internos |
-| `POST` | `/api/auth/register`, `/api/auth/login` | Público, limitado | Cadastro/login, CNPJ único e matematicamente válido para empresa, hash bcrypt e JWT HS256 |
-| `GET` | `/api/auth/me` | JWT ativo | Retorna identidade pública; middleware confere no banco o status e o papel atual em cada chamada autenticada |
-| `GET`, `PATCH` | `/api/auth/profile` | Candidato autenticado | Lê/atualiza o perfil profissional e preferência de visibilidade, privada por padrão |
-| `GET` | `/api/jobs` | Público | Anúncios ativos `confirmed`/`unverified`; preserva status e fonte |
-| `GET` | `/api/companies` | Público | Diretório de empresas ativas cuja revisão está registrada (`verified_at`) |
-| `GET` | `/api/companies/mine` | Empresa autenticada | Lê o próprio perfil empresarial |
-| `POST` | `/api/jobs/discovery/search` | Candidato autenticado | Executa busca somente pelo provedor configurado e persiste resultados |
-| `POST`, `GET` | `/api/jobs/:jobId/applications`, `/api/jobs/applications/mine` | Candidato autenticado | Registra interesse uma vez em anúncio ativo e lista as candidaturas próprias |
-| `GET`, `POST` | `/api/connections` | Candidato ou empresa | Lista conexões próprias; candidato pode iniciar uma conversa e empresa verificada pode enviar convite a candidato visível |
-| `PATCH` | `/api/connections/:connectionId` | Participante autenticado | Aceita/recusa convite pendente ou bloqueia a conexão |
-| `GET`, `POST` | `/api/connections/:connectionId/messages` | Participante autenticado | Lê histórico e envia mensagens apenas após conexão aceita |
-| `GET` | `/api/talents`, `/api/talents/saved`, `/api/talents/:candidateId` | Empresa verificada | Busca perfis com opt-in, vê lista salva e consulta perfil autorizado; contato não é exposto sem consentimento e conexão/candidatura |
-| `POST`, `DELETE` | `/api/talents/:candidateId/saved` | Empresa verificada | Salva/remove perfil visível da lista empresarial |
-| `GET`, `POST`, `PATCH` | `/api/notifications`, `/api/notifications/read-all`, `/api/notifications/:id/read` | Conta autenticada | Lista, marca todas ou marca uma notificação própria como lida |
-| `GET`, `POST` | `/api/interviews/mine`, `/api/interviews/feedback` | Candidato autenticado | Histórico próprio; análise opcional através de IA externa, com consentimento explícito, validação do retorno e rate limit |
+1. No Dashboard do Supabase, abra **SQL Editor** e crie uma consulta.
+2. Copie o conteúdo integral de [`../supabase/schema.sql`](../supabase/schema.sql) para a consulta e execute.
+3. Confira se a consulta terminou sem erro.
 
-A API ainda não implementa gestão empresarial completa de anúncios e candidaturas, provisionamento operacional/verificação de empresas, operações administrativas, notificações automáticas para todos os eventos, autenticação por cookie, verificação/reset por e-mail, auditoria, recuperação/exclusão de conta ou processo persistente de denúncias. Empresas só conseguem usar rotas de talentos/conexões se `verified_at` já tiver sido preenchido por um processo administrativo que ainda não existe. As ações equivalentes do painel frontend continuam locais e demonstrativas.
+O script usa `auth.users` do Supabase Auth e cria as tabelas de perfis, contatos privados, empresas, vagas, candidaturas, conexões, mensagens, entrevistas, notificações, preferências, cursos, relatos e auditoria. Inclui chaves estrangeiras, índices, triggers, RLS e concessões explícitas de acesso. A conta de candidato é criada pelo trigger quando o Supabase Auth cria um usuário. Não crie manualmente uma tabela `auth.users`.
 
-## Inicialização e configuração
+O script pode ser executado novamente sobre a mesma versão do schema: preserva registros e recria as policies e os triggers do SkillMatch. **Não é um mecanismo de migração de versões antigas.** Se as tabelas já existirem ou houver dados no schema `public`, faça backup e revise a estrutura antes de executar; `CREATE TABLE IF NOT EXISTS` não adapta automaticamente colunas de versões anteriores.
+
+## 3. Configurar chaves no backend
+
+No terminal, na raiz do repositório:
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+Edite `backend/.env` e substitua os exemplos pelos valores do seu projeto. No Dashboard, consulte **Project Settings → API** (ou a seção equivalente de API Keys):
+
+| Variável | Valor |
+|---|---|
+| `SUPABASE_URL` | Project URL do projeto, por exemplo `https://<project-ref>.supabase.co` |
+| `SUPABASE_PUBLISHABLE_KEY` | Publishable key. O backend também aceita o nome legado `SUPABASE_ANON_KEY`. |
+| `SUPABASE_SECRET_KEY` | Secret key. O backend também aceita o nome legado `SUPABASE_SERVICE_ROLE_KEY`. Trate-a como segredo. |
+
+`SUPABASE_SECRET_KEY` só pode ficar no ambiente privado do backend. Não a coloque em HTML, JavaScript, `.env.example`, GitHub Pages nem em chamados ou conversas. A publishable key não substitui a secret key: o servidor precisa das duas para os fluxos atuais.
+
+Mantenha também, no mínimo:
+
+```dotenv
+NODE_ENV=development
+PORT=3000
+FRONTEND_ORIGIN=http://localhost:3000
+TRUST_PROXY=0
+AUTH_EMAIL_REDIRECT_URL=http://localhost:3000/auth-callback.html
+```
+
+`FRONTEND_ORIGIN` deve corresponder exatamente à origem do navegador, sem barra final. Para uma implantação em domínio próprio, use a origem HTTPS real. `TRUST_PROXY` deve permanecer `0` quando o backend não está atrás de proxy; ajuste para o número exato de proxies reversos confiáveis somente se necessário.
+
+O arquivo `backend/.env.example` contém esses campos e comentários. O `.env` real é ignorado pelo Git. Nunca o adicione ao repositório.
+
+## 4. Configurar confirmação e retorno de e-mail
+
+No Dashboard do Supabase, abra **Authentication → URL Configuration** e inclua como URL permitida o valor exato de `AUTH_EMAIL_REDIRECT_URL` (para desenvolvimento local, `http://localhost:3000/auth-callback.html`). Configure também a Site URL para a origem em que o frontend será servido. Em produção, use HTTPS e o domínio público real.
+
+O provedor de e-mail do Supabase deve estar habilitado para confirmações e recuperação de senha. O cadastro público cria candidatos e empresas; uma confirmação pode ser exigida conforme as configurações do projeto. O cadastro empresarial não marca a empresa como verificada e novas vagas começam pendentes de revisão.
+
+### Conta administrativa
+
+O cadastro público não pode criar uma conta administrativa, e o schema não semeia uma conta fictícia. Crie/confirme uma conta de operador por um canal confiável e promova **somente essa conta** no SQL Editor do Supabase, conferindo o e-mail antes de executar. Exemplo para substituir pelo e-mail exato da conta controlada:
+
+```sql
+update public.profiles p
+set role = 'admin',
+    terms_accepted_at = coalesce(p.terms_accepted_at, now())
+from auth.users u
+where u.id = p.id
+  and lower(u.email) = lower('operador@seudominio.com');
+```
+
+Não conceda o papel `admin` a partir de dados enviados pelo frontend. Restrinja o acesso ao SQL Editor e proteja as credenciais do operador.
+
+## 5. Instalar e iniciar
 
 ```bash
 cd backend
-cp .env.example .env
-# Defina JWT_SECRET (mínimo 32 caracteres aleatórios), credenciais SQL e FRONTEND_ORIGIN.
 npm ci
-mysql -u root -p < sql/schema.sql
 npm start
 ```
 
-Use Node.js 20+, MySQL 8+, HTTPS em produção, um usuário SQL restrito e cofre/variáveis do host para segredos. Não publique `.env`. Configure `FRONTEND_ORIGIN` para a origem exata do GitHub Pages/domínio (a lista pode conter origens separadas por vírgula). GitHub Pages não executa Express, MySQL, chaves ou tarefas agendadas.
+O servidor escuta em `0.0.0.0:3000` por padrão e serve tanto as páginas do SkillMatch quanto a API. Abra:
 
-Para banco anterior à coluna CNPJ, aplique uma única vez `sql/migrations/001_company_cnpj.sql` e depois `sql/migrations/002_connections_interviews.sql`. Se CNPJ já foi migrado, aplique somente a 002. Não reaplique migrações nem recrie o schema sobre dados existentes. A migração 002 define a visibilidade como privada, revoga consentimentos implícitos do esquema anterior (perfis precisam de novo opt-in), registra o horário do consentimento e cria tabelas de favoritos, talentos salvos, conexões, mensagens, notificações e sessões de entrevista. Registros empresariais antigos permanecem sem CNPJ (`NULL`) até revisão; novos cadastros pela API exigem um CNPJ válido e único. Em banco novo, `sql/schema.sql` contém a estrutura atual. Faça backup e valide as migrações em ambiente de teste antes de produção.
+- Aplicativo: `http://localhost:3000/`
+- Verificação da API/Supabase: `http://localhost:3000/api/health`
+- Catálogo público: `http://localhost:3000/api/jobs`
 
-## Provedor autorizado de pesquisa
+Com schema e variáveis válidos, `/api/health` deve responder HTTP 200 com `{"status":"ok","database":"connected","provider":"supabase"}`. Uma resposta 503 indica que o servidor não reconhece a configuração, não alcança o projeto ou não consegue consultar o schema. Verifique os logs do backend, as três variáveis Supabase, a URL, a rede e se `supabase/schema.sql` foi executado. Não exponha valores das chaves ao pedir ajuda.
 
-Configure `SEARCH_PROVIDER_URL` e `SEARCH_PROVIDER_TOKEN` **somente no servidor**. O serviço configurado deve aceitar `POST` com Bearer token e JSON semelhante a:
+## 6. Frontend em domínio separado (opcional)
 
-```json
-{
-  "location": { "city": "Araucária", "state": "PR", "radiusKm": 10 },
-  "query": ["administração"],
-  "categories": ["primeiro emprego", "jovem aprendiz", "estágio", "sem experiência"]
-}
-```
+Quando as páginas e a API estiverem em origens diferentes:
 
-E retornar `{ "results": [...] }` com objetos estruturados contendo `companyName`, `title`, `description`, `city`, `state`, `requirements`, `education`, `employmentType`, `modality`, `sourceName`, `sourceUrl`, `publishedAt`, `availability`, `verifiedAt`, `expiresAt` e `externalId` (campos opcionais ausentes não são inventados). `sourceUrl` HTTP/HTTPS original é obrigatório para persistir; URLs inseguras são descartadas. `expiresAt` é opcional e, quando ausente, o registro recebe janela de exibição de 14 dias renovada apenas se for reencontrado numa sincronização. O provedor deve ter autorização/termos adequados para consultar suas fontes.
+1. Hospede o backend em um servidor Node com URL HTTPS pública.
+2. No valor `content` de `<meta name="skillmatch-api-base">` em cada página HTML do frontend, informe a URL HTTPS pública da API, sem barra final. Exemplo: `<meta name="skillmatch-api-base" content="https://api.seudominio.com">`.
+3. Defina `FRONTEND_ORIGIN` em `backend/.env` com a origem exata do frontend. Para mais de uma origem, separe-as por vírgula.
+4. Adicione a URL HTTPS de `auth-callback.html` às Redirect URLs permitidas no Supabase.
 
-A integração **não** acessa resultados HTML do Google nem ignora robots, limites ou termos de uso. Se o serviço não estiver configurado, a rota responde `503`. O backend marca `confirmed` somente quando a fonte contratada devolve `availability: "active"` e `verifiedAt` junto a um link válido; sem isso mantém `unverified`. `availability: "closed"` é armazenado como `possibly_closed` e não aparece no catálogo público. O sistema preserva fonte, URL e data de verificação retornada pelo fornecedor. Essa verificação é tão confiável quanto o processo do provedor; produção deve auditar amostras e tratar links quebrados.
+O arquivo raiz [`.env.example`](../.env.example) é apenas uma referência: frontend estático não carrega arquivos `.env` automaticamente. Ele não contém nem deve conter chaves Supabase. Se o frontend e a API forem servidos pela mesma instância Express, a origem é inferida e não é necessário preencher a meta tag.
 
-`DISCOVERY_CITIES` aceita uma lista como `Curitiba:PR,Araucaria:PR`. `DISCOVERY_CRON` permite agendar sincronização (padrão `0 7 * * *`, horário `America/Sao_Paulo`). O agendador só inicia quando cidades e provedor autorizado estão configurados. A deduplicação usa hash de nome da empresa, cargo e localidade. Ajuste a regra conforme fontes e anúncios reais, pois diferenças de grafia podem exigir normalização/registro de identificador externo.
+## 7. Testes e limites conhecidos
 
-## Conectar o catálogo estático
-
-Edite no `index.html`:
-
-```html
-<meta name="skillmatch-api-base" content="https://api.exemplo.com">
-```
-
-O frontend faz `GET /api/jobs`. O backend deve responder `{"jobs": [...]}`. CORS precisa permitir a origem do frontend. A página exibe apenas os dados recebidos e status enviados pelo backend; falha de rede mostra aviso e os dados de demonstração locais. Esta configuração **não liga autenticação, candidatura, painel, Radar ou dados de perfil** à API.
-
-Para completar essa migração, criar um serviço de sessão HTTPOnly/CSRF, adaptar `AuthService`, `UserService` e `PlatformService`, substituir cada operação local por endpoints, definir tratamento offline e testes de contrato, e impedir que dados locais de demonstração se confundam com contas reais. Não copie as credenciais públicas de demonstração para o banco.
-
-## Testes disponíveis
+Execute os testes locais:
 
 ```bash
+# Na raiz do repositório
+npm test
+
+# Em outro terminal ou após o primeiro comando
 cd backend
-npm ci
 npm test
 ```
 
-Há cinco testes unitários que verificam consentimento explícito e o serviço `interview-ai` com provedor simulado: não configurado, resposta válida, conteúdo malformado e HTTPS obrigatório em produção. Os testes não sobem o servidor HTTP nem conectam MySQL. Na raiz do repositório, `npm test` cobre os fluxos demonstrativos de navegador. Ambos não substituem testes de integração com banco, segurança e navegadores reais.
+Esses testes não usam credenciais reais nem validam o projeto Supabase. O schema pode ser conferido localmente, mas somente `/api/health` no backend configurado confirma que o processo conseguiu consultar o projeto. Faça também um cadastro de teste e confira o usuário e os registros relacionados no Dashboard, sem usar dados pessoais reais durante a validação inicial.
 
-## Segurança e implantação ainda necessárias
+O modo padrão do frontend usa a API; se a API estiver indisponível, os registros fictícios locais não são usados como fallback. Fixtures em `localStorage` são exclusivas do modo de demonstração habilitado explicitamente (`SKILLMATCH_CONFIG.mode = "demo"`). No modo API, `localStorage`/`sessionStorage` podem guardar a sessão de autenticação, não os registros da plataforma. A sessão acessível pelo JavaScript requer proteção contra XSS; para produção, avalie migrar a autenticação para cookies `HttpOnly`, `Secure`, `SameSite` e proteção CSRF.
 
-- Configure sessão por cookie `HttpOnly`, `Secure`, `SameSite` e proteção CSRF, ou trate o JWT atual apenas como scaffold (o token em armazenamento acessível ao JS é vulnerável a XSS).
-- Provisionamento de `admin` deve ser manual/controlado; o endpoint de registro público não permite administrador. Adicione MFA, política de menor privilégio e trilha de auditoria antes de painel operacional.
-- Implementar validação/verificação de empresas, revisão humana, denúncias e decisões de publicação.
-- Implementar propriedade do recurso para todas as rotas futuras, paginação, limites, proteção de arquivos/currículos e política de retenção/exclusão.
-- Configurar serviço de busca autorizado, teste de disponibilidade, observabilidade e limite de custo. A chave nunca vai ao frontend.
-- Google Maps/alternativa: geocodificação precisa e distância/rota devem ser solicitadas pelo backend, com chaves restritas, consentimento, cache e cota. O Radar demonstrativo aceita endereço de referência sem enviá-lo a terceiros, mas só reconhece sete cidades do Paraná e estima a distância em linha reta entre centros urbanos; não calcula rua, CEP ou rota. Endereço não reconhecido não aplica o raio, e a interface avisa isso.
-- IA: `/api/interviews/feedback` é uma rota opcional de backend, ainda sem credenciais nem integração no painel. Exige `consentToExternalProcessing: true`, envia pergunta/resposta/habilidades ao endpoint configurado (`AI_PROVIDER_URL`, `AI_PROVIDER_TOKEN`, `AI_PROVIDER_MODEL`) e grava resposta/feedback e horário de consentimento. Sem configuração retorna `503`; rejeita HTTPS ausente em produção e valida o JSON do provedor. Testes usam um `fetch` simulado, não um provedor real. Antes de ativar, avaliar retenção, contrato, transferência internacional e política de dados do fornecedor. O treino atual do painel é exclusivamente local e determinístico; a compatibilidade também é regra local.
-- Criar testes de integração com MySQL/API simulada e testes de autorização (candidato não lê outro currículo, empresa não altera vaga alheia, admin isolado) antes da publicação.
-
-## Modelo de dados
-
-`backend/sql/schema.sql` cria `users`, `candidate_profiles`, `companies`, `jobs`, `applications`, `candidate_favorites`, `company_saved_talents`, `connections`, `connection_messages`, `notifications` e `interview_sessions` com relações e restrições. Perfis ficam invisíveis por padrão; sessões de entrevista guardam resposta, feedback, provedor e horário de consentimento para processamento externo. `companies` guarda CNPJ normalizado (14 caracteres alfanuméricos, único); a validação aritmética não é consulta oficial. Bancos existentes usam as migrações 001 e 002, uma única vez e com backup. Dados reais de candidatos exigem controles de privacidade, acesso restrito e política LGPD revisada.
+O fluxo de foto não está conectado ao Supabase Storage e fica indisponível no perfil remoto. O provedor de IA é opcional e não é necessário para conectar o banco. Antes da publicação, valide autenticação, políticas de e-mail, domínio HTTPS, permissões RLS e procedimentos de recuperação e exclusão de conta no projeto real.

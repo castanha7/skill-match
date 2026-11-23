@@ -14,7 +14,7 @@ const modal = $("#publicModal");
 const modalBody = $("#publicModalBody");
 const modalTitleId = "publicModalTitle";
 let allJobs = [];
-let catalogMode = "demo";
+let catalogMode = "loading";
 let activeType = "";
 let toastTimer;
 
@@ -103,9 +103,11 @@ function jobCard(job) {
 function renderCompanies() {
   const container = $("#catalogCompanyList");
   const statusCopy = $("#catalogCompanies .catalog-company-heading span");
-  statusCopy.textContent = allJobs.some((job) => !isDemo(job))
-    ? "Derivadas de anúncios ativos; confira o status individual e a fonte."
-    : "Exemplos demonstrativos · sem contratação confirmada";
+  statusCopy.textContent = allJobs.length && allJobs.some((job) => !isDemo(job))
+    ? "Empresas com anúncios publicados no catálogo da plataforma."
+    : APP_CONFIG.demoMode
+      ? "Exemplos demonstrativos · sem contratação confirmada"
+      : "Nenhuma empresa exibida sem anúncio público ativo.";
   const companies = new Map();
   for (const job of allJobs) {
     const company = PlatformService.getCompany(job.companyId);
@@ -132,7 +134,11 @@ function render() {
   catalogRoot.hidden = jobs.length === 0;
   countLabel.textContent = catalogMode === "live"
     ? `${jobs.length} ${jobs.length === 1 ? "oportunidade pública encontrada" : "oportunidades públicas encontradas"} · confira status e publicação original.`
-    : `${jobs.length} ${jobs.length === 1 ? "oportunidade demonstrativa encontrada" : "oportunidades demonstrativas encontradas"} · nenhuma vaga foi confirmada.`;
+    : catalogMode === "demo"
+      ? `${jobs.length} ${jobs.length === 1 ? "oportunidade demonstrativa encontrada" : "oportunidades demonstrativas encontradas"} · nenhuma vaga foi confirmada.`
+      : catalogMode === "loading"
+        ? "Carregando oportunidades públicas..."
+        : "Catálogo indisponível no momento. Tente novamente em instantes.";
 }
 function showModal(title, html, icon = "✦") {
   $("#publicModalIcon").textContent = icon;
@@ -147,7 +153,15 @@ function closeModal() {
 }
 function openAccountGate(kind) {
   const isApply = kind === "apply";
-  showModal(isApply ? "Crie sua conta para seguir" : "Salve oportunidades no seu perfil", `<p>${isApply ? "Para se candidatar e acompanhar suas oportunidades, crie um perfil gratuito. As vagas exibidas aqui são exemplos demonstrativos; esta ação não envia candidatura a uma empresa." : "Com uma conta, você poderá organizar oportunidades e acompanhar seu perfil. Este catálogo demonstrativo não salva vagas em uma conta real."}</p><div class="modal-status">Ação demonstrativa · sem envio para empresas</div><div class="modal-actions"><a class="btn btn-primary" href="cadastro.html">Criar conta grátis <span aria-hidden="true">→</span></a><a class="btn btn-ghost" href="login.html">Já tenho conta</a></div>`, "↗");
+  const demoCopy = APP_CONFIG.demoMode
+    ? (isApply
+      ? "Esta oportunidade é apenas um registro de demonstração. O fluxo de candidatura não envia dados a uma empresa."
+      : "No modo de demonstração, a lista de oportunidades não é salva em uma conta real.")
+    : (isApply
+      ? "Entre ou crie sua conta para enviar uma candidatura à empresa e acompanhar as atualizações no painel."
+      : "Entre ou crie sua conta para salvar esta oportunidade na sua lista pessoal.");
+  const statusCopy = APP_CONFIG.demoMode ? "Modo de demonstração · sem envio para empresas" : "Sua candidatura será registrada na plataforma";
+  showModal(isApply ? "Crie sua conta para seguir" : "Salve oportunidades no seu perfil", `<p>${demoCopy}</p><div class="modal-status">${statusCopy}</div><div class="modal-actions"><a class="btn btn-primary" href="cadastro.html">Criar conta grátis <span aria-hidden="true">→</span></a><a class="btn btn-ghost" href="login.html">Já tenho conta</a></div>`, "↗");
 }
 function openJobDetails(job) {
   const company = companyFor(job);
@@ -156,7 +170,7 @@ function openJobDetails(job) {
   const education = job.education || "Não informada";
   const checked = job.lastVerifiedAt ? readableDate(job.lastVerifiedAt) : "Ainda não verificada";
   const status = isDemo(job) ? "Demonstrativa — vaga não confirmada" : (job.statusLabel || "Encontrada — verificação pendente");
-  showModal(job.title || "Detalhes da oportunidade", `<p><strong>${escapeHtml(company)}</strong> · ${escapeHtml([job.city, job.state].filter(Boolean).join(", ") || "Localização não informada")}</p><p><strong>Distância aproximada:</strong> ${escapeHtml(publicDistance(job))}. A estimativa usa apenas centros urbanos conhecidos, nunca endereço exato.</p><p>${escapeHtml(job.description || "Descrição não informada pela fonte.")}</p><div class="modal-detail-list"><div><strong>Tipo:</strong> ${escapeHtml(job.type || "Não informado")} · <strong>Modalidade:</strong> ${escapeHtml(job.modality || "Não informada")}</div><div><strong>Escolaridade:</strong> ${escapeHtml(education)}</div><div><strong>Remuneração:</strong> ${escapeHtml(salaryLabel(job))}</div><div><strong>Requisitos:</strong><ul>${requirements}</ul></div><div><strong>Publicação:</strong> ${escapeHtml(readableDate(job.createdAt))} · <strong>Última verificação:</strong> ${escapeHtml(checked)}</div><div><strong>Fonte:</strong> ${escapeHtml(job.sourceName || (isDemo(job) ? "Dados demonstrativos SkillMatch" : "Fonte não informada"))}</div></div><span class="modal-status">${escapeHtml(status)}</span>${source ? `<p><a href="${escapeHtml(source)}" target="_blank" rel="noopener noreferrer">Abrir publicação original ↗</a></p>` : `<p>Não há link externo de candidatura nesta oportunidade demonstrativa.</p>`}<div class="modal-actions"><button class="btn btn-primary" type="button" data-action="apply">Quero me candidatar</button><button class="btn btn-ghost" type="button" data-modal-close>Fechar</button></div>`, "⌕");
+  showModal(job.title || "Detalhes da oportunidade", `<p><strong>${escapeHtml(company)}</strong> · ${escapeHtml([job.city, job.state].filter(Boolean).join(", ") || "Localização não informada")}</p><p><strong>Distância aproximada:</strong> ${escapeHtml(publicDistance(job))}. A estimativa usa apenas centros urbanos conhecidos, nunca endereço exato.</p><p>${escapeHtml(job.description || "Descrição não informada pela fonte.")}</p><div class="modal-detail-list"><div><strong>Tipo:</strong> ${escapeHtml(job.type || "Não informado")} · <strong>Modalidade:</strong> ${escapeHtml(job.modality || "Não informada")}</div><div><strong>Escolaridade:</strong> ${escapeHtml(education)}</div><div><strong>Remuneração:</strong> ${escapeHtml(salaryLabel(job))}</div><div><strong>Requisitos:</strong><ul>${requirements}</ul></div><div><strong>Publicação:</strong> ${escapeHtml(readableDate(job.createdAt))} · <strong>Última verificação:</strong> ${escapeHtml(checked)}</div><div><strong>Fonte:</strong> ${escapeHtml(job.sourceName || (isDemo(job) ? "Dados demonstrativos SkillMatch" : "Fonte não informada"))}</div></div><span class="modal-status">${escapeHtml(status)}</span>${source ? `<p><a href="${escapeHtml(source)}" target="_blank" rel="noopener noreferrer">Abrir publicação original ↗</a></p>` : `<p>${APP_CONFIG.demoMode ? "Não há link externo de candidatura nesta oportunidade demonstrativa." : "A candidatura é enviada e acompanhada pela plataforma SkillMatch."}</p>`}<div class="modal-actions"><button class="btn btn-primary" type="button" data-action="apply">Quero me candidatar</button><button class="btn btn-ghost" type="button" data-modal-close>Fechar</button></div>`, "⌕");
 }
 function updateFilterButtons(value) {
   activeType = value;
@@ -165,23 +179,24 @@ function updateFilterButtons(value) {
 }
 async function loadOpportunities() {
   PlatformService.init();
-  const demos = PlatformService.getPublishedJobs();
-  const apiBase = APP_CONFIG.apiBaseUrl;
-  if (apiBase) {
+  if (APP_CONFIG.demoMode) {
+    allJobs = PlatformService.getPublishedJobs();
+    catalogMode = "demo";
+    notice.innerHTML = `<span class="notice-mark">i</span><p><strong>Modo de teste local.</strong> As oportunidades desta sessão são dados demonstrativos e não representam vagas confirmadas.</p>`;
+  } else {
     try {
       const response = await ApiService.get("/api/jobs");
-      const remoteJobs = Array.isArray(response) ? response : response.jobs || response.items || [];
+      const remoteJobs = Array.isArray(response) ? response : response?.jobs || response?.items || [];
       allJobs = Array.isArray(remoteJobs) ? remoteJobs : [];
       catalogMode = "live";
-      notice.innerHTML = `<span class="notice-mark">i</span><p><strong>Oportunidades públicas da plataforma.</strong> Os estados de verificação e as fontes exibidos em cada vaga são fornecidos pelo serviço configurado. Confira sempre a publicação original antes de se candidatar.</p>`;
-      if (!allJobs.length) notice.innerHTML = `<span class="notice-mark">i</span><p><strong>Nenhuma oportunidade pública encontrada.</strong> Não há anúncios ativos retornados pelo serviço conectado. Não mostramos empresas como contratantes sem vaga publicada.</p>`;
+      notice.innerHTML = allJobs.length
+        ? `<span class="notice-mark">i</span><p><strong>Oportunidades publicadas na plataforma.</strong> Confira os detalhes do anúncio e os dados da empresa antes de se candidatar.</p>`
+        : `<span class="notice-mark">i</span><p><strong>Nenhuma oportunidade pública no momento.</strong> Empresas só aparecem quando têm um anúncio ativo publicado.</p>`;
     } catch (error) {
-      allJobs = demos;
-      notice.innerHTML = `<span class="notice-mark">i</span><p><strong>Serviço de oportunidades indisponível.</strong> ${escapeHtml(error.message)} Exibimos apenas registros demonstrativos locais; nenhuma pesquisa externa ocorreu.</p>`;
+      allJobs = [];
+      catalogMode = "unavailable";
+      notice.innerHTML = `<span class="notice-mark">i</span><p><strong>Não foi possível conectar ao catálogo.</strong> ${escapeHtml(error.message)} Nenhuma vaga local ou fictícia será exibida como substituta.</p>`;
     }
-  } else {
-    allJobs = demos;
-    notice.innerHTML = `<span class="notice-mark">i</span><p><strong>Catálogo demonstrativo.</strong> As oportunidades disponíveis nesta versão são dados fictícios para você conhecer as funcionalidades. Nenhuma vaga real foi pesquisada ou confirmada.</p>`;
   }
   renderCompanies();
   render();

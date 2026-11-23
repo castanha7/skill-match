@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <meta name="skillmatch-api-base" content="" />
-  <meta name="description" content="Cadastre sua empresa no SkillMatch e conheça a área demonstrativa para aproximar novos talentos." />
+  <meta name="description" content="Crie uma conta empresarial no SkillMatch para publicar oportunidades e acompanhar candidaturas." />
   <title>Cadastro empresarial — SkillMatch</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23173f31'/%3E%3Ccircle cx='22' cy='24' r='7' fill='none' stroke='white' stroke-width='5'/%3E%3Ccircle cx='42' cy='40' r='7' fill='none' stroke='%23cce88c' stroke-width='5'/%3E%3Cpath d='M27 29l10 6' stroke='white' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" /><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -15,13 +15,13 @@
   <main class="auth-layout">
     <section class="auth-brand">
       <a class="logo logo--light" href="index.html"><span class="logo-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="7" r="3"/><circle cx="17.5" cy="17" r="3"/><circle cx="17.5" cy="7" r="2.2"/><path d="M9 9.5l5.5 5M8.8 5.2l6-1.4M6.5 10v6.5"/></svg></span><span class="logo-name">Skill<em>Match</em></span></a>
-      <div class="brand-mid"><span class="brand-badge"><span class="dot"></span> PARA EMPRESAS</span><h1>O próximo grande talento pode estar <span class="highlight">começando agora</span>.</h1><p>Conecte sua empresa à nova geração de profissionais e abra caminhos para quem está dando os primeiros passos.</p><ul class="brand-features"><li><span class="feat-icon">✓</span> Apresente vagas para novos talentos</li><li><span class="feat-icon">✓</span> Organize candidaturas em um só lugar</li><li><span class="feat-icon">✓</span> Descubra habilidades além do currículo</li></ul><div class="match-card"><strong>Encontre novos talentos antes da concorrência.</strong><small> Cadastro demonstrativo · sem divulgação pública nesta versão</small></div></div>
+      <div class="brand-mid"><span class="brand-badge"><span class="dot"></span> PARA EMPRESAS</span><h1>O próximo grande talento pode estar <span class="highlight">começando agora</span>.</h1><p>Conecte sua empresa à nova geração de profissionais e abra caminhos para quem está dando os primeiros passos.</p><ul class="brand-features"><li><span class="feat-icon">✓</span> Apresente vagas para novos talentos</li><li><span class="feat-icon">✓</span> Organize candidaturas em um só lugar</li><li><span class="feat-icon">✓</span> Descubra habilidades além do currículo</li></ul><div class="match-card"><strong>Encontre novos talentos antes da concorrência.</strong><small> Cadastro sujeito à revisão antes da publicação de vagas</small></div></div>
       <div class="brand-stats"><div><strong>Talento</strong><small>em cada começo</small></div><div><strong>Conexão</strong><small>que abre caminhos</small></div></div>
     </section>
     <section class="auth-form-panel">
       <header class="auth-form-head"><a class="logo mobile-logo" href="index.html"><span class="logo-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="6.5" cy="7" r="3"/><circle cx="17.5" cy="17" r="3"/><circle cx="17.5" cy="7" r="2.2"/><path d="M9 9.5l5.5 5M8.8 5.2l6-1.4M6.5 10v6.5"/></svg></span><span class="logo-name">Skill<em>Match</em></span></a><p class="auth-switch">Já tem acesso? <a href="login.html?role=company"><strong>Entrar</strong></a></p></header>
       <div class="auth-form-body wide">
-        <h2>Cadastre sua empresa</h2><p class="lead">Conheça as ferramentas empresariais do SkillMatch. Este cadastro é demonstrativo e fica salvo somente neste navegador.</p>
+        <h2>Cadastre sua empresa</h2><p class="lead">Crie sua conta para administrar o perfil da empresa, anunciar vagas e acompanhar candidaturas.</p>
         <div class="alert alert-error" id="companyRegisterAlert" role="alert"><span id="companyRegisterAlertText"></span></div>
         <form id="companyRegisterForm" novalidate>
           <h3 class="company-form-section-title">Sobre a empresa</h3>
@@ -34,12 +34,12 @@
           <div class="field"><label for="contactName">Nome completo</label><input class="input" id="contactName" autocomplete="name" required /><p class="error-msg">Informe nome e sobrenome.</p></div>
           <div class="field"><label for="companyEmail">E-mail de acesso</label><input class="input" id="companyEmail" type="email" autocomplete="email" required /><p class="error-msg">Informe um e-mail válido.</p></div>
           <div class="form-row"><div class="field"><label for="companyPassword">Senha</label><input class="input" id="companyPassword" type="password" autocomplete="new-password" minlength="10" required /><p class="error-msg">Use ao menos 10 caracteres, com letras e números.</p></div><div class="field"><label for="companyPasswordConfirm">Confirmar senha</label><input class="input" id="companyPasswordConfirm" type="password" autocomplete="new-password" required /><p class="error-msg">As senhas não coincidem.</p></div></div>
-          <div class="field company-terms-field"><label class="check"><input id="companyTerms" type="checkbox" required /><span>Li e aceito os <a href="termos.html" target="_blank" rel="noopener noreferrer">termos demonstrativos</a> e o <a href="privacidade.html" target="_blank" rel="noopener noreferrer">aviso de privacidade</a>.</span></label><p class="error-msg">É necessário aceitar os termos para continuar.</p></div>
-          <button class="btn btn-primary btn-block" id="companyRegisterButton" type="submit">Criar conta empresarial demonstrativa <span aria-hidden="true">→</span></button>
-          <p class="company-form-note">Nenhuma vaga será divulgada nem nenhum candidato receberá seus dados. Verificação empresarial e publicação real exigem backend operacional.</p>
+          <div class="field company-terms-field"><label class="check"><input id="companyTerms" type="checkbox" required /><span>Li e aceito os <a href="termos.html" target="_blank" rel="noopener noreferrer">termos de uso</a> e o <a href="privacidade.html" target="_blank" rel="noopener noreferrer">aviso de privacidade</a>.</span></label><p class="error-msg">É necessário aceitar os termos para continuar.</p></div>
+          <button class="btn btn-primary btn-block" id="companyRegisterButton" type="submit">Criar conta empresarial <span aria-hidden="true">→</span></button>
+          <p class="company-form-note">O perfil empresarial precisa ser revisado antes de publicar vagas. A validação dos dígitos do CNPJ não confirma a situação cadastral nem a titularidade.</p>
         </form>
       </div>
-      <p class="auth-footer-note">SkillMatch © 2026 · Ambiente demonstrativo</p>
+      <p class="auth-footer-note">SkillMatch © 2026 · Acesso empresarial</p>
     </section>
   </main>
   <script type="module" src="assets/js/pages/cadastro-empresa.js"></script>
