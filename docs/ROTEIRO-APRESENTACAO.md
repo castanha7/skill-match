@@ -25,8 +25,8 @@ São contas abertas de demonstração, não credenciais privadas. Não informe d
 1. **Página inicial:** apresente o slogan “Suas habilidades. Sua oportunidade.” e pesquise o catálogo. Os quatro anúncios e as faixas salariais são fictícios e aparecem identificados como demonstração.
 2. **Candidato:** entre com a conta de candidato. Em **Vagas**, abra os detalhes para ver compatibilidade explicada, filtre por remuneração e registre interesse/salve uma oportunidade. Em **Minhas candidaturas**, mostre o status. Em **Preparação para Entrevistas**, escolha um tipo, escreva uma resposta e veja os pontos positivos e sugestões; o feedback usa regras locais, não IA.
 3. **Consentimento:** em **Configurações**, habilite a visibilidade do perfil. Isso demonstra que o banco de talentos e os convites dependem de opt-in; dados de contato continuam sujeitos às regras de autorização.
-4. **Empresa:** saia e entre com a conta empresarial. Em **Candidaturas**, veja o interesse enviado pelo candidato e atualize o status; no início, mostre a distribuição do funil. Em **Banco de talentos**, localize o perfil autorizado e envie um convite demonstrativo.
-5. **Resposta e conversa:** volte à conta de candidato, aceite ou recuse o convite em **Empresas e mensagens**. Após aceitar, envie uma mensagem; retorne à empresa para mostrar a conversa e responder.
+4. **Empresa:** saia e entre com a conta empresarial. Em **Candidaturas**, veja o interesse do candidato, atualize o status e use **Convidar para entrevista** para definir data, formato e local/link. Em **Banco de talentos**, localize um perfil autorizado e envie também um convite de conexão.
+5. **Resposta e conversa:** volte à conta de candidato. Em **Empresas e mensagens**, aceite ou recuse o convite de entrevista e, se quiser, aceite a conexão da empresa. Só depois da conexão aceita troque mensagens; retorne à empresa para conferir a resposta do convite e conversar.
 6. **Administração (opcional):** entre com a conta administrativa e demonstre revisão de vaga e moderação de relato. As ações alteram apenas os dados locais.
 
 ## O que esta demonstração não representa

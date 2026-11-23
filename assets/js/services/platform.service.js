@@ -165,6 +165,7 @@ const EMPTY_STATE = () => ({
   messages: [],
   savedTalents: [],
   interviewHistory: [],
+  interviewInvitations: [],
   notifications: [],
   preferences: {},
   reports: [],
@@ -254,7 +255,7 @@ function ensureState() {
   const stored = StorageService.get(DATA_KEY);
   const state = stored && [1, 2].includes(stored.version) ? stored : EMPTY_STATE();
   const migrateLegacyConsent = Boolean(stored && stored.version === 1);
-  for (const key of ["companies", "jobs", "applications", "favorites", "connections", "messages", "savedTalents", "interviewHistory", "notifications", "reports", "ads"]) {
+  for (const key of ["companies", "jobs", "applications", "favorites", "connections", "messages", "savedTalents", "interviewHistory", "interviewInvitations", "notifications", "reports", "ads"]) {
     if (!Array.isArray(state[key])) state[key] = [];
   }
   let changed = !stored || stored.version !== 2;
@@ -342,6 +343,27 @@ function normalizeSalary(value) {
 function validateSalaryRange(minimum, maximum) {
   if ((minimum === null) !== (maximum === null)) throw new Error("Informe os dois valores da faixa salarial ou deixe ambos em branco.");
   if (minimum !== null && maximum < minimum) throw new Error("O valor máximo deve ser igual ou maior que o mínimo.");
+}
+
+function normalizeInterviewInvitationFields(fields) {
+  const startsAt = new Date(fields.startsAt);
+  if (Number.isNaN(startsAt.getTime()) || startsAt.getTime() < Date.now() + 10 * 60 * 1000) {
+    throw new Error("Escolha uma data e horário pelo menos 10 minutos no futuro.");
+  }
+  const mode = String(fields.mode ?? "");
+  if (!["Online", "Presencial"].includes(mode)) throw new Error("Selecione um formato de entrevista válido.");
+  const meetingDetails = String(fields.meetingDetails ?? "").trim();
+  if (meetingDetails.length > 300) throw new Error("O local ou link deve ter até 300 caracteres.");
+  if (mode === "Presencial" && meetingDetails.length < 4) throw new Error("Informe o endereço ou local da entrevista presencial.");
+  if (mode === "Online" && meetingDetails) {
+    try {
+      const url = new URL(meetingDetails);
+      if (!["https:", "http:"].includes(url.protocol)) throw new Error();
+    } catch { throw new Error("Informe um link http(s) válido ou deixe o campo em branco."); }
+  }
+  const message = String(fields.message ?? "").trim();
+  if (message.length < 10 || message.length > 700) throw new Error("A mensagem deve ter entre 10 e 700 caracteres.");
+  return { startsAt: startsAt.toISOString(), mode, meetingDetails, message };
 }
 
 const CITY_COORDINATES = {
@@ -959,6 +981,106 @@ export const PlatformService = {
     });
   },
 
+  createInterviewInvitation(companyId, ownerId, applicationId, fields) {
+    const invitationFields = normalizeInterviewInvitationFields(fields || {});
+    return update((state) => {
+      const company = state.companies.find((entry) => entry.id === companyId && entry.ownerId === ownerId && entry.active !== false);
+      const application = state.applications.find((entry) => entry.id === applicationId);
+      const job = state.jobs.find((entry) => entry.id === application?.jobId);
+      const candidate = UserService.listByRole("candidate").find((entry) => entry.id === application?.candidateId && entry.status === "active");
+      if (!company || !application || !job || job.companyId !== company.id || !candidate) {
+        throw new Error("Candidatura indisponível para esta conta empresarial.");
+      }
+      if (["Desistiu", "Não selecionada", "Contratada"].includes(application.status)) {
+        throw new Error("Não é possível convidar para entrevista neste status de candidatura.");
+      }
+      if (state.interviewInvitations.some((entry) => entry.applicationId === applicationId && entry.status === "pending")) {
+        throw new Error("Já existe um convite de entrevista aguardando resposta.");
+      }
+      const now = new Date().toISOString();
+      const invitation = {
+        id: id("interview_invitation"), companyId, applicationId, jobId: job.id, candidateId: candidate.id,
+        ...invitationFields, status: "pending", createdAt: now, updatedAt: now, isDemo: true,
+      };
+      state.interviewInvitations.unshift(invitation);
+      if (application.status !== "Entrevista") {
+        application.status = "Entrevista";
+        application.updatedAt = now;
+        application.history ||= [];
+        application.history.push({ status: "Entrevista", at: now, note: "Convite para entrevista demonstrativa enviado." });
+      }
+      addNotification(state, candidate.id, {
+        title: "Convite para entrevista demonstrativo",
+        message: `${company.name} convidou você para conversar sobre “${job.title}” em ${new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(invitation.startsAt))}. Responda no painel; nenhum e-mail foi enviado.`,
+        targetView: "connections", linkId: invitation.id, type: "application",
+      });
+      return { ...invitation };
+    });
+  },
+
+  getCandidateInterviewInvitations(candidateId) {
+    const state = ensureState();
+    return state.interviewInvitations
+      .filter((entry) => entry.candidateId === candidateId)
+      .map((entry) => ({
+        ...entry,
+        company: state.companies.find((company) => company.id === entry.companyId) || null,
+        job: state.jobs.find((job) => job.id === entry.jobId) || null,
+        application: state.applications.find((application) => application.id === entry.applicationId) || null,
+      }))
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  },
+
+  getCompanyInterviewInvitations(companyId) {
+    const state = ensureState();
+    return state.interviewInvitations
+      .filter((entry) => entry.companyId === companyId)
+      .map((entry) => ({
+        ...entry,
+        candidate: UserService.listByRole("candidate").find((candidate) => candidate.id === entry.candidateId) || null,
+        job: state.jobs.find((job) => job.id === entry.jobId) || null,
+        application: state.applications.find((application) => application.id === entry.applicationId) || null,
+      }))
+      .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+  },
+
+  respondToInterviewInvitation(invitationId, candidateId, response) {
+    if (!["accepted", "declined"].includes(response)) throw new Error("Resposta ao convite inválida.");
+    return update((state) => {
+      const invitation = state.interviewInvitations.find((entry) => entry.id === invitationId && entry.candidateId === candidateId);
+      const candidate = UserService.listByRole("candidate").find((entry) => entry.id === candidateId && entry.status === "active");
+      if (!invitation || !candidate || invitation.status !== "pending") throw new Error("Este convite não está mais aguardando resposta.");
+      invitation.status = response;
+      invitation.respondedAt = new Date().toISOString();
+      invitation.updatedAt = invitation.respondedAt;
+      const company = state.companies.find((entry) => entry.id === invitation.companyId);
+      addNotification(state, company?.ownerId, {
+        title: response === "accepted" ? "Convite para entrevista aceito" : "Convite para entrevista recusado",
+        message: `${candidate.nome} ${response === "accepted" ? "aceitou" : "recusou"} o convite demonstrativo.`,
+        targetView: "company-connections", linkId: invitation.id, type: "application",
+      });
+      return { ...invitation };
+    });
+  },
+
+  cancelInterviewInvitation(invitationId, companyId, ownerId) {
+    return update((state) => {
+      const company = state.companies.find((entry) => entry.id === companyId && entry.ownerId === ownerId);
+      const invitation = state.interviewInvitations.find((entry) => entry.id === invitationId && entry.companyId === companyId);
+      if (!company || !invitation || !["pending", "accepted"].includes(invitation.status)) {
+        throw new Error("Este convite não pode mais ser cancelado.");
+      }
+      invitation.status = "cancelled";
+      invitation.updatedAt = new Date().toISOString();
+      addNotification(state, invitation.candidateId, {
+        title: "Convite para entrevista cancelado",
+        message: `${company.name} cancelou o convite demonstrativo.`,
+        targetView: "connections", linkId: invitation.id, type: "application",
+      });
+      return { ...invitation };
+    });
+  },
+
   withdrawApplication(applicationId, candidateId) {
     return update((state) => {
       const application = state.applications.find((entry) => entry.id === applicationId && entry.candidateId === candidateId);
@@ -1183,13 +1305,17 @@ export const PlatformService = {
       const removedConnections = new Set(state.connections
         .filter((connection) => connection.candidateId === userId || ownedCompanyIds.has(connection.companyId))
         .map((connection) => connection.id));
-      state.notifications = state.notifications.filter((notification) => notification.userId !== userId && !removedJobIds.has(notification.linkId));
+      const removedInterviewInvitations = new Set(state.interviewInvitations
+        .filter((invitation) => invitation.candidateId === userId || ownedCompanyIds.has(invitation.companyId))
+        .map((invitation) => invitation.id));
+      state.notifications = state.notifications.filter((notification) => notification.userId !== userId && !removedJobIds.has(notification.linkId) && !removedInterviewInvitations.has(notification.linkId));
       state.applications = state.applications.filter((application) => application.candidateId !== userId && !removedJobIds.has(application.jobId));
       state.favorites = state.favorites.filter((favorite) => favorite.candidateId !== userId && !removedJobIds.has(favorite.jobId));
       state.connections = state.connections.filter((connection) => !removedConnections.has(connection.id));
       state.messages = state.messages.filter((message) => !removedConnections.has(message.connectionId) && message.senderId !== userId && message.recipientId !== userId);
       state.savedTalents = state.savedTalents.filter((entry) => entry.candidateId !== userId && !ownedCompanyIds.has(entry.companyId));
       state.interviewHistory = state.interviewHistory.filter((entry) => entry.candidateId !== userId);
+      state.interviewInvitations = state.interviewInvitations.filter((entry) => !removedInterviewInvitations.has(entry.id));
       state.reports = state.reports.filter((report) => report.userId !== userId);
       state.jobs = state.jobs.filter((job) => !removedJobIds.has(job.id));
       state.companies = state.companies.filter((company) => !ownedCompanyIds.has(company.id) || company.id === "company-demo");

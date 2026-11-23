@@ -163,6 +163,11 @@ function formattedDate(value, withTime = false) {
   return new Intl.DateTimeFormat("pt-BR", withTime ? { dateStyle: "short", timeStyle: "short" } : { dateStyle: "medium" }).format(date);
 }
 
+function localDateTimeValue(date) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
 function locationText(place) {
   if (!place?.city) return "Localização não informada";
   return `${place.city}${place.state ? `, ${place.state}` : ""}`;
@@ -595,6 +600,24 @@ function openCandidateInvite(candidateId) {
   openDialog("Convidar candidato", candidate.nome, body);
 }
 
+function openInterviewInvitationDialog(applicationId) {
+  const application = PlatformService.getCompanyApplications(session.companyId).find((entry) => entry.id === applicationId);
+  if (!application?.candidate || !application.job) { showToast("Candidatura indisponível para agendar uma entrevista.", "error"); return; }
+  const pendingInvitation = PlatformService.getCompanyInterviewInvitations(session.companyId)
+    .find((entry) => entry.applicationId === applicationId && entry.status === "pending");
+  if (pendingInvitation) { showToast("Este candidato já tem um convite de entrevista aguardando resposta.", "info"); return; }
+  const minimum = localDateTimeValue(new Date(Date.now() + 10 * 60 * 1000));
+  const defaultStart = localDateTimeValue(new Date(Date.now() + 24 * 60 * 60 * 1000));
+  const body = `<form data-form="interview-invitation" data-application-id="${escapeHtml(applicationId)}" novalidate>
+      <div class="form-row"><div class="field"><label for="interviewInviteStart">Data e horário</label><input class="input" id="interviewInviteStart" type="datetime-local" min="${escapeHtml(minimum)}" value="${escapeHtml(defaultStart)}" /><p class="error-msg">Escolha um horário futuro.</p></div><div class="field"><label for="interviewInviteMode">Formato</label><select class="input" id="interviewInviteMode"><option value="Online">Online</option><option value="Presencial">Presencial</option></select><p class="error-msg">Selecione um formato.</p></div></div>
+      <div class="field"><label for="interviewMeetingDetails">Local ou link <span class="optional">(link opcional no formato online)</span></label><input class="input" id="interviewMeetingDetails" maxlength="300" placeholder="Endereço presencial ou link https://..." /><p class="error-msg">Informe um endereço ou link válido para o formato escolhido.</p></div>
+      <div class="field"><label for="interviewInviteMessage">Mensagem ao candidato</label><textarea class="input" id="interviewInviteMessage" rows="4" maxlength="700">Gostaríamos de conversar sobre sua candidatura para “${escapeHtml(application.job.title)}”.</textarea><p class="error-msg">Escreva uma mensagem de 10 a 700 caracteres.</p></div>
+      <p class="form-help">Convite demonstrativo associado a esta candidatura. Não envia e-mail, cria chamada de vídeo nem adiciona o evento a uma agenda.</p>
+      <div class="modal-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Cancelar</button><button type="submit" class="btn btn-primary">Enviar convite</button></div>
+    </form>`;
+  openDialog("Convidar para entrevista", `${application.candidate.nome} · ${application.job.title}`, body);
+}
+
 function renderCandidateConnectionsPage() {
   const connections = PlatformService.getCandidateConnections(currentUser.id);
   const companies = PlatformService.getCompanies({ includeInactive: true }).filter((company) => company.active !== false);
@@ -611,7 +634,21 @@ function renderCandidateConnectionsPage() {
   }).join("");
   const threads = connections.map((connection) => renderConversationCard(connection, connection.company?.name || "Empresa", locationText(connection.company))).join("");
   const unread = PlatformService.getUnreadMessageCount(session.userId);
-  return `<section class="panel-card" style="margin-bottom:1rem"><div class="card-head"><div><h2>Conheça empresas e inicie uma conversa</h2><p class="panel-card-subtitle">Somente empresas com conta neste navegador podem receber uma apresentação. Conectar é uma ação explícita; nenhuma mensagem é enviada a empresas reais.</p></div><span class="demo-tag">${unread} não lida(s)</span></div><div class="job-list">${directory || emptyState("Nenhuma empresa disponível", "Empresas aparecem aqui quando há um perfil empresarial local ativo.", "company")}</div></section>
+  const interviewInvitations = PlatformService.getCandidateInterviewInvitations(currentUser.id);
+  const invitationCards = interviewInvitations.map((invitation) => {
+    const statusLabel = { pending: "Aguardando resposta", accepted: "Entrevista aceita", declined: "Entrevista recusada", cancelled: "Convite cancelado" }[invitation.status] || "Indisponível";
+    const meetingDetails = invitation.mode === "Online"
+      ? (safeHttpUrl(invitation.meetingDetails)
+        ? `<a href="${escapeHtml(safeHttpUrl(invitation.meetingDetails))}" target="_blank" rel="noopener noreferrer">Abrir link da entrevista</a>`
+        : "A empresa informará o link por uma conversa autorizada.")
+      : escapeHtml(invitation.meetingDetails || "Local não informado");
+    const actions = invitation.status === "pending"
+      ? `<div class="job-card-actions"><button type="button" class="btn btn-primary btn-sm" data-action="respond-interview-invitation" data-response="accepted" data-id="${escapeHtml(invitation.id)}">Aceitar convite</button><button type="button" class="btn btn-ghost btn-sm" data-action="respond-interview-invitation" data-response="declined" data-id="${escapeHtml(invitation.id)}">Recusar</button></div>`
+      : "";
+    return `<article class="application-card"><div><div style="display:flex;align-items:center;gap:.55rem;flex-wrap:wrap"><h3>${escapeHtml(invitation.job?.title || "Entrevista demonstrativa")}</h3>${statusBadge(statusLabel)}</div><p>${escapeHtml(invitation.company?.name || "Empresa demonstrativa")} · ${formattedDate(invitation.startsAt, true)} · ${escapeHtml(invitation.mode)}</p><p><strong>Local/link:</strong> ${meetingDetails}</p><p>${escapeHtml(invitation.message)}</p><p class="form-help">Convite local; não cria evento em calendário nem envia mensagem para fora deste navegador.</p></div>${actions}</article>`;
+  }).join("");
+  const interviewSection = `<section class="panel-card" style="margin-bottom:1rem"><div class="card-head"><div><h2>Convites para entrevistas</h2><p class="panel-card-subtitle">Revise horário e formato; aceite ou recuse antes de a conversa ser combinada.</p></div><span class="demo-tag">${interviewInvitations.filter((item) => item.status === "pending").length} aguardando</span></div><div class="job-list">${invitationCards || emptyState("Nenhum convite recebido", "Convites enviados por empresas após uma candidatura aparecerão aqui.", "calendar")}</div></section>`;
+  return `${interviewSection}<section class="panel-card" style="margin-bottom:1rem"><div class="card-head"><div><h2>Conheça empresas e inicie uma conversa</h2><p class="panel-card-subtitle">Somente empresas com conta neste navegador podem receber uma apresentação. Conectar é uma ação explícita; nenhuma mensagem é enviada a empresas reais.</p></div><span class="demo-tag">${unread} não lida(s)</span></div><div class="job-list">${directory || emptyState("Nenhuma empresa disponível", "Empresas aparecem aqui quando há um perfil empresarial local ativo.", "company")}</div></section>
     <section class="panel-card"><div class="card-head"><div><h2>Convites, conexões e mensagens</h2><p class="panel-card-subtitle">Aceite um convite antes de trocar mensagens. Você pode denunciar ou bloquear contatos.</p></div></div><div class="job-list">${threads || emptyState("Sem conexões", "Demonstre interesse em uma empresa para criar uma conexão de demonstração.", "people")}</div></section>`;
 }
 
@@ -671,7 +708,16 @@ function renderCompanyConnectionsPage() {
     connection.candidate?.nome || "Perfil indisponível",
     connection.candidate ? `${locationText(connection.candidate)} · ${connection.candidate.escolaridade || "Formação não informada"}` : "Candidato indisponível",
   )).join("");
-  return `<section class="panel-card" style="margin-bottom:1rem"><div class="card-head"><div><h2>Conversas autorizadas</h2><p class="panel-card-subtitle">Convites aparecem aqui até o candidato decidir. Mensagens só são habilitadas após conexão aceita.</p></div><span class="demo-tag">${unread} não lida(s)</span></div><div class="job-list">${cards || emptyState("Sem conexões ainda", "Consulte o banco de talentos autorizado ou aguarde apresentações de candidatos.", "people")}</div><div class="quick-link-row">${button("Abrir banco de talentos", "go-view", { style: "btn-ghost", small: true, id: "company-talent" })}</div></section>`;
+  const interviewInvitations = PlatformService.getCompanyInterviewInvitations(session.companyId);
+  const inviteCards = interviewInvitations.map((invitation) => {
+    const statusLabel = { pending: "Aguardando resposta", accepted: "Entrevista aceita", declined: "Entrevista recusada", cancelled: "Convite cancelado" }[invitation.status] || "Indisponível";
+    const cancelAction = ["pending", "accepted"].includes(invitation.status)
+      ? `<button type="button" class="btn btn-danger-ghost btn-sm" data-action="cancel-interview-invitation" data-id="${escapeHtml(invitation.id)}">Cancelar</button>`
+      : "";
+    return `<article class="application-card"><div><div style="display:flex;align-items:center;gap:.55rem;flex-wrap:wrap"><h3>${escapeHtml(invitation.candidate?.nome || "Candidato indisponível")}</h3>${statusBadge(statusLabel)}</div><p>${escapeHtml(invitation.job?.title || "Vaga indisponível")} · ${formattedDate(invitation.startsAt, true)} · ${escapeHtml(invitation.mode)}</p><p><strong>Local/link:</strong> ${escapeHtml(invitation.meetingDetails || (invitation.mode === "Online" ? "A combinar" : "Local não informado"))}</p><p>${escapeHtml(invitation.message)}</p></div>${cancelAction}</article>`;
+  }).join("");
+  return `<section class="panel-card" style="margin-bottom:1rem"><div class="card-head"><div><h2>Convites para entrevistas</h2><p class="panel-card-subtitle">Convites ligados às candidaturas, com horário, formato e resposta do candidato.</p></div><span class="demo-tag">${interviewInvitations.filter((entry) => entry.status === "pending").length} aguardando</span></div><div class="job-list">${inviteCards || emptyState("Sem convites", "Na lista de candidaturas, agende uma conversa para avançar com um candidato.", "calendar")}</div></section>
+    <section class="panel-card"><div class="card-head"><div><h2>Conversas autorizadas</h2><p class="panel-card-subtitle">Mensagens só são habilitadas após conexão aceita. Contato pessoal continua protegido pelas preferências do candidato.</p></div><span class="demo-tag">${unread} não lida(s)</span></div><div class="job-list">${cards || emptyState("Sem conexões ainda", "Consulte o banco de talentos autorizado ou aguarde apresentações de candidatos.", "people")}</div><div class="quick-link-row">${button("Abrir banco de talentos", "go-view", { style: "btn-ghost", small: true, id: "company-talent" })}</div></section>`;
 }
 
 function renderApplicationsPage() {
@@ -813,10 +859,17 @@ function renderCompanyJobsPage() {
 
 function renderCompanyApplicantsPage() {
   const applications = PlatformService.getCompanyApplications(session.companyId);
+  const invitations = PlatformService.getCompanyInterviewInvitations(session.companyId);
   if (!applications.length) return `<section class="panel-card"><div class="card-head"><div><h2>Candidatos interessados</h2><p class="panel-card-subtitle">Os perfis só aparecem aqui após a pessoa registrar interesse em uma vaga local.</p></div></div>${emptyState("Sem candidaturas", "Entre na conta demonstrativa de candidato, registre interesse em uma vaga e volte para consultar o fluxo.", "people")}</section>`;
-  return `<section class="panel-card" style="margin-bottom:1rem"><h2>Currículos e candidaturas</h2><p class="panel-card-subtitle">Os status não enviam mensagens nem representam processos seletivos reais.</p></section><div class="job-list">${applications.map((application) => {
+  return `<section class="panel-card" style="margin-bottom:1rem"><h2>Currículos e candidaturas</h2><p class="panel-card-subtitle">Acompanhe o histórico e envie um convite de entrevista vinculado à candidatura. Nenhum e-mail ou chamada é enviada.</p></section><div class="job-list">${applications.map((application) => {
     const candidate = application.candidate;
-    return `<article class="application-card"><div><div style="display:flex;gap:.55rem;align-items:center;flex-wrap:wrap"><h3>${escapeHtml(candidate?.nome || "Perfil indisponível")}</h3>${statusBadge(application.status)}</div><p>${escapeHtml(application.job?.title || "Vaga arquivada")} · ${escapeHtml(locationText(candidate))} · ${formattedDate(application.createdAt, true)}</p><p>${escapeHtml(candidate?.curso || candidate?.escolaridade || "Formação não informada")}</p><div class="tag-list">${(candidate?.habilidades || []).slice(0, 5).map((skill) => `<span class="tag-view">${escapeHtml(skill)}</span>`).join("")}</div><ul class="application-history">${(application.history || []).slice(-4).reverse().map((entry) => `<li>${escapeHtml(entry.status)} — ${formattedDate(entry.at, true)}${entry.note ? ` · ${escapeHtml(entry.note)}` : ""}</li>`).join("")}</ul></div><div class="job-card-actions"><button type="button" class="btn btn-ghost btn-sm" data-action="view-candidate" data-id="${escapeHtml(candidate?.id || "")}">Consultar currículo</button><select class="input" style="width:auto;min-width:140px" data-application-status="${escapeHtml(application.id)}" aria-label="Atualizar status da candidatura">${[...APPLICATION_STATUSES, ...(application.status === "Desistiu" ? ["Desistiu"] : [])].map((status) => `<option value="${escapeHtml(status)}" ${application.status === status ? "selected" : ""}>${escapeHtml(status)}</option>`).join("")}</select></div></article>`;
+    const latestInvitation = invitations.find((entry) => entry.applicationId === application.id);
+    const pendingInvitation = latestInvitation?.status === "pending";
+    const invitationStatus = { pending: "Convite aguardando resposta", accepted: "Entrevista aceita", declined: "Convite recusado", cancelled: "Convite cancelado" }[latestInvitation?.status] || "";
+    const interviewAction = pendingInvitation
+      ? statusBadge(invitationStatus)
+      : `<button type="button" class="btn btn-primary btn-sm" data-action="schedule-interview" data-id="${escapeHtml(application.id)}">${latestInvitation?.status === "accepted" ? "Agendar outra" : "Convidar para entrevista"}</button>`;
+    return `<article class="application-card"><div><div style="display:flex;gap:.55rem;align-items:center;flex-wrap:wrap"><h3>${escapeHtml(candidate?.nome || "Perfil indisponível")}</h3>${statusBadge(application.status)}</div><p>${escapeHtml(application.job?.title || "Vaga arquivada")} · ${escapeHtml(locationText(candidate))} · ${formattedDate(application.createdAt, true)}</p><p>${escapeHtml(candidate?.curso || candidate?.escolaridade || "Formação não informada")}</p><div class="tag-list">${(candidate?.habilidades || []).slice(0, 5).map((skill) => `<span class="tag-view">${escapeHtml(skill)}</span>`).join("")}</div><ul class="application-history">${(application.history || []).slice(-4).reverse().map((entry) => `<li>${escapeHtml(entry.status)} — ${formattedDate(entry.at, true)}${entry.note ? ` · ${escapeHtml(entry.note)}` : ""}</li>`).join("")}</ul>${latestInvitation ? `<p class="form-help">${escapeHtml(invitationStatus)} · ${formattedDate(latestInvitation.startsAt, true)} · ${escapeHtml(latestInvitation.mode)}</p>` : ""}</div><div class="job-card-actions"><button type="button" class="btn btn-ghost btn-sm" data-action="view-candidate" data-id="${escapeHtml(candidate?.id || "")}">Consultar currículo</button>${interviewAction}<select class="input" style="width:auto;min-width:140px" data-application-status="${escapeHtml(application.id)}" aria-label="Atualizar status da candidatura">${[...APPLICATION_STATUSES, ...(application.status === "Desistiu" ? ["Desistiu"] : [])].map((status) => `<option value="${escapeHtml(status)}" ${application.status === status ? "selected" : ""}>${escapeHtml(status)}</option>`).join("")}</select></div></article>`;
   }).join("")}</div>`;
 }
 
@@ -1047,6 +1100,26 @@ function runAction(element) {
     }
     case "start-company-connection": openConnectionIntroduction(id); break;
     case "invite-candidate": openCandidateInvite(id); break;
+    case "schedule-interview": openInterviewInvitationDialog(id); break;
+    case "respond-interview-invitation": {
+      try {
+        const response = element.dataset.response;
+        PlatformService.respondToInterviewInvitation(id, currentUser.id, response);
+        renderPage();
+        showToast(response === "accepted" ? "Entrevista aceita; os detalhes seguem no painel demonstrativo." : "Convite recusado sem compartilhar seus dados de contato.", "success");
+      } catch (error) { showToast(error.message, "error"); }
+      break;
+    }
+    case "cancel-interview-invitation":
+      askConfirmation("Cancelar este convite?", "O candidato receberá um aviso local, e o status ficará registrado como cancelado.", "Cancelar convite", () => {
+        try {
+          PlatformService.cancelInterviewInvitation(id, session.companyId, session.userId);
+          closeDialog();
+          renderPage();
+          showToast("Convite cancelado localmente.", "info");
+        } catch (error) { showToast(error.message, "error"); }
+      }, true);
+      break;
     case "accept-connection":
     case "decline-connection": {
       try {
@@ -1257,6 +1330,31 @@ async function handleFormSubmit(form) {
       interviewDraft.answer = "";
       renderPage();
       showToast("Revisão guiada salva apenas neste navegador.", "success");
+      return;
+    }
+    if (kind === "interview-invitation") {
+      const startsAt = $("#interviewInviteStart", form);
+      const mode = $("#interviewInviteMode", form);
+      const meetingDetails = $("#interviewMeetingDetails", form);
+      const message = $("#interviewInviteMessage", form);
+      const startTime = new Date(startsAt.value).getTime();
+      const validStart = Number.isFinite(startTime) && startTime > Date.now() + 10 * 60 * 1000;
+      const details = meetingDetails.value.trim();
+      const validDetails = mode.value === "Presencial"
+        ? details.length >= 4
+        : mode.value === "Online" && (!details || Boolean(safeHttpUrl(details)));
+      let valid = true;
+      valid = markField(startsAt, validStart, "Escolha um horário pelo menos 10 minutos no futuro.") && valid;
+      valid = markField(mode, ["Online", "Presencial"].includes(mode.value), "Selecione um formato válido.") && valid;
+      valid = markField(meetingDetails, validDetails, mode.value === "Presencial" ? "Informe o endereço ou local presencial." : "Informe um link http(s) válido ou deixe em branco.") && valid;
+      valid = markField(message, message.value.trim().length >= 10 && message.value.trim().length <= 700, "Escreva uma mensagem de 10 a 700 caracteres.") && valid;
+      if (!valid) return;
+      PlatformService.createInterviewInvitation(session.companyId, session.userId, form.dataset.applicationId, {
+        startsAt: startsAt.value, mode: mode.value, meetingDetails: details, message: message.value,
+      });
+      closeDialog();
+      renderPage();
+      showToast("Convite enviado e registrado na candidatura; nenhum e-mail foi enviado.", "success");
       return;
     }
     if (kind === "connection-introduction") {
