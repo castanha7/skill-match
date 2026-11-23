@@ -1,6 +1,7 @@
 import { $, $$, setFieldError, clearFieldError, bindAutoClear, showToast } from "../utils/dom.js";
 import { Validators } from "../utils/validators.js";
 import { AuthService } from "../services/auth.service.js";
+import { APP_CONFIG } from "../config/app.config.js";
 import { initPasswordToggles } from "../components/password-toggle.js";
 import { safeReturnPath } from "../utils/navigation.js";
 
@@ -38,6 +39,11 @@ try {
 
 initPasswordToggles();
 const params = new URLSearchParams(window.location.search);
+if (APP_CONFIG.useApi) {
+  $(".demo-account-grid")?.setAttribute("hidden", "");
+  forgotModal.querySelector(".modal > p")?.replaceChildren(document.createTextNode("Informe o e-mail da sua conta. Se houver uma conta para esse endereço, o serviço enviará instruções seguras de recuperação."));
+  resetRequestForm.querySelector('[type="submit"]').textContent = "Enviar instruções";
+}
 const requestedDestination = safeReturnPath(params.get("redirect") || params.get("next"), window.location.href);
 if (AuthService.isAuthenticated()) {
   const session = AuthService.getSession();
@@ -48,6 +54,15 @@ if (AuthService.isAuthenticated()) {
 if (["candidate", "company", "admin"].includes(params.get("role"))) roleInput.value = params.get("role");
 if (params.get("cadastrado")) {
   showAlert(alertSuccess, "#loginSuccessText", "Conta criada. Entre para continuar no SkillMatch.");
+}
+if (params.get("confirmacao")) {
+  showAlert(alertSuccess, "#loginSuccessText", "Enviamos um link de confirmação para seu e-mail. Confirme o endereço e depois entre na sua conta.");
+}
+if (params.get("senhaAtualizada")) {
+  showAlert(alertSuccess, "#loginSuccessText", "Senha atualizada. Entre novamente com sua nova senha.");
+}
+if (params.get("emailAtualizado")) {
+  showAlert(alertSuccess, "#loginSuccessText", "E-mail confirmado. Entre usando o endereço atualizado.");
 }
 if (params.get("redirect")) {
   showAlert(alertError, "#loginAlertText", "Faça login para acessar essa área.");
@@ -101,7 +116,7 @@ $("#resetBack").addEventListener("click", () => {
 forgotModal.addEventListener("click", (event) => { if (event.target === forgotModal) closeResetModal(); });
 document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeResetModal(); });
 
-resetRequestForm.addEventListener("submit", (event) => {
+resetRequestForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   $("#resetError").classList.remove("show");
   $("#resetCodeNotice").classList.remove("show");
@@ -109,19 +124,30 @@ resetRequestForm.addEventListener("submit", (event) => {
     setFieldError(resetEmailInput, "Informe um e-mail válido.");
     return;
   }
+  const submit = resetRequestForm.querySelector('[type="submit"]');
+  submit.disabled = true;
   try {
-    const code = AuthService.requestPasswordResetDemo(resetEmailInput.value);
-    if (!code) {
+    const response = await AuthService.requestPasswordReset(resetEmailInput.value);
+    if (APP_CONFIG.useApi) {
+      $("#resetCodeText").textContent = response.message || "Se houver uma conta para esse endereço, enviaremos instruções de recuperação.";
+      $("#resetCodeNotice").classList.add("show");
+      resetCompleteForm.hidden = true;
+      resetRequestForm.hidden = true;
+      return;
+    }
+    if (!response.code) {
       showAlert($("#resetError"), "#resetErrorText", "Não foi possível iniciar a recuperação. Confira o e-mail e tente novamente.");
       return;
     }
-    $("#resetCodeText").textContent = `Código local de demonstração: ${code}. Ele expira em 15 minutos; nenhum e-mail foi enviado.`;
+    $("#resetCodeText").textContent = `Código local de demonstração: ${response.code}. Ele expira em 15 minutos; nenhum e-mail foi enviado.`;
     $("#resetCodeNotice").classList.add("show");
     resetCompleteForm.hidden = false;
     resetRequestForm.hidden = true;
     resetCodeInput.focus();
   } catch (error) {
     showAlert($("#resetError"), "#resetErrorText", error.message);
+  } finally {
+    submit.disabled = false;
   }
 });
 

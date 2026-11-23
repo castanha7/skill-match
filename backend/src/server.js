@@ -3,63 +3,55 @@ import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
-import cron from 'node-cron';
-import authRoutes from './routes/auth.js';
-import jobRoutes from './routes/jobs.js';
-import connectionRoutes from './routes/connections.js';
-import talentRoutes from './routes/talents.js';
-import interviewRoutes from './routes/interviews.js';
-import companyRoutes from './routes/companies.js';
-import notificationRoutes from './routes/notifications.js';
-import { getPool, closePool } from './services/db.js';
-import { searchAuthorizedProvider, upsertDiscoveredJobs } from './services/opportunity-search.js';
+import authRoutes from './routes/supabase-auth.js';
+import platformRoutes from './routes/supabase-platform.js';
+import aiRoutes from './routes/supabase-ai.js';
+import { createAnonymousClient, isSupabaseConfigured } from './services/supabase.js';
 
-if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) throw new Error('JWT_SECRET precisa ter pelo menos 32 caracteres.');
 const app = express();
 app.disable('x-powered-by');
-app.use(helmet());
-const origins = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173').split(',').map((item) => item.trim());
-app.use(cors({ origin(origin, callback) { if (!origin || origins.includes(origin)) return callback(null, true); return callback(new Error('Origem não autorizada pelo CORS.')); }, methods: ['GET','POST','PUT','PATCH','DELETE'], allowedHeaders: ['Content-Type','Authorization'], maxAge: 600 }));
-app.use(express.json({ limit: '100kb' }));
+app.set('trust proxy', Number(process.env.TRUST_PROXY || 1));
+app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
+const origins = (process.env.FRONTEND_ORIGIN || 'http://localhost:5173')
+  .split(',').map((item) => item.trim()).filter(Boolean);
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || origins.includes(origin)) return callback(null, true);
+    return callback(new Error('Origem não autorizada pelo CORS.'));
+  },
+  methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
+  allowedHeaders: ['Content-Type','Authorization'],
+  maxAge: 600,
+}));
+app.use(express.json({ limit: '1mb' }));
 app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: 'draft-8', legacyHeaders: false }), authRoutes);
-app.use('/api/jobs', jobRoutes);
-app.use('/api/companies', companyRoutes);
-app.use('/api/connections', connectionRoutes);
-app.use('/api/talents', talentRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/interviews', interviewRoutes);
+app.use('/api', platformRoutes);
+app.use('/api/interviews', aiRoutes);
 app.get('/api/health', async (_req, res) => {
-  try { await getPool().query('SELECT 1'); res.json({ status: 'ok', database: 'connected' }); }
-  catch { res.status(503).json({ status: 'degraded', database: 'unavailable' }); }
+  if (!isSupabaseConfigured()) return res.status(503).json({ status: 'degraded', database: 'not_configured' });
+  try {
+    const { error } = await createAnonymousClient().from('jobs').select('id').limit(1);
+    if (error) return res.status(503).json({ status: 'degraded', database: 'schema_unavailable' });
+    return res.json({ status: 'ok', database: 'connected', provider: 'supabase' });
+  } catch {
+    return res.status(503).json({ status: 'degraded', database: 'unavailable' });
+  }
 });
 app.use((_req, res) => res.status(404).json({ message: 'Rota não encontrada.' }));
 app.use((error, _req, res, _next) => {
-  console.error('[api]', error.message);
   const status = Number(error.status) || 500;
-  res.status(status).json({ message: status >= 500 ? 'Não foi possível concluir a solicitação.' : error.message });
+  if (status >= 500) console.error('[api]', error.code || '', error.message || 'Erro interno');
+  return res.status(status).json({
+    message: status >= 500 ? (status === 503 ? error.message : 'Não foi possível concluir a solicitação.') : error.message,
+    ...(error.details ? { details: error.details } : {}),
+  });
 });
 
-const schedule = process.env.DISCOVERY_CRON || '0 7 * * *';
-const cities = (process.env.DISCOVERY_CITIES || '').split(',').map((value) => {
-  const [city, state] = value.trim().split(':');
-  return city && state ? { city, state } : null;
-}).filter(Boolean);
-if (cities.length && process.env.SEARCH_PROVIDER_URL && process.env.SEARCH_PROVIDER_TOKEN && cron.validate(schedule)) {
-  cron.schedule(schedule, async () => {
-    for (const city of cities) {
-      try {
-        const found = await searchAuthorizedProvider({ ...city, radiusKm: 25, interests: ['primeiro emprego','jovem aprendiz','estágio','sem experiência'] });
-        await upsertDiscoveredJobs(found);
-        console.info(`[discovery] ${city.city}/${city.state}: ${found.length} registro(s) atualizados.`);
-      } catch (error) { console.error(`[discovery] ${city.city}/${city.state}: ${error.message}`); }
-    }
-  }, { timezone: 'America/Sao_Paulo' });
-} else {
-  console.info('[discovery] Agendamento desativado; configure provedor autorizado e DISCOVERY_CITIES para ativar.');
-}
-
 const port = Number(process.env.PORT || 3000);
-const server = app.listen(port, '0.0.0.0', () => console.info(`SkillMatch API ouvindo na porta ${port}.`));
-async function shutdown() { server.close(async () => { await closePool(); process.exit(0); }); }
+const server = app.listen(port, '0.0.0.0', () => {
+  console.info(`SkillMatch API ouvindo na porta ${port}.`);
+  if (!isSupabaseConfigured()) console.warn('[config] Supabase não configurado; API autenticada responderá 503.');
+});
+const shutdown = () => server.close(() => process.exit(0));
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);

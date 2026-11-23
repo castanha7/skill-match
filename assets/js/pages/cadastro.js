@@ -1,7 +1,7 @@
 import { $, $$, setFieldError, clearFieldError, bindAutoClear, showToast } from "../utils/dom.js";
 import { Validators, PASSWORD_STRENGTH_LABELS } from "../utils/validators.js";
 import { Formatters } from "../utils/formatters.js";
-import { CATALOGS } from "../config/app.config.js";
+import { APP_CONFIG, CATALOGS } from "../config/app.config.js";
 import { AuthService } from "../services/auth.service.js";
 import { initPasswordToggles } from "../components/password-toggle.js";
 import { createSkillsEditor } from "../components/skills-editor.js";
@@ -207,9 +207,14 @@ form.addEventListener("submit", async (event) => {
   };
 
   try {
-    await AuthService.register(dados);
-    showToast("Conta criada com sucesso! Bem-vindo(a) ao SkillMatch 🎉");
-    setTimeout(() => window.location.replace("painel.html?bemvindo=1"), 600);
+    const user = await AuthService.register(dados);
+    if (user.requiresEmailConfirmation) {
+      showToast("Cadastro recebido. Confirme seu e-mail pelo link enviado para ativar a conta.", "success");
+      setTimeout(() => window.location.replace("login.html?confirmacao=1&role=candidate"), 700);
+    } else {
+      showToast(APP_CONFIG.useApi ? "Conta criada com sucesso! Bem-vindo(a) ao SkillMatch 🎉" : "Conta criada com sucesso! Bem-vindo(a) ao SkillMatch 🎉");
+      setTimeout(() => window.location.replace("painel.html?bemvindo=1"), 600);
+    }
   } catch (error) {
     $("#registerAlertText").textContent = error.message;
     alertError.classList.add("show");

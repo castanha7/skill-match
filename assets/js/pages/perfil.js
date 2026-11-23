@@ -1,7 +1,7 @@
 import { $, $$, setFieldError, clearFieldError, showToast } from "../utils/dom.js";
 import { Validators } from "../utils/validators.js";
 import { Formatters } from "../utils/formatters.js";
-import { CATALOGS } from "../config/app.config.js";
+import { APP_CONFIG, CATALOGS } from "../config/app.config.js";
 import { AuthService } from "../services/auth.service.js";
 import { UserService } from "../services/user.service.js";
 import { PlatformService } from "../services/platform.service.js";
@@ -39,6 +39,12 @@ CATALOGS.tiposVaga.forEach((tipo) => {
 });
 
 const profileSkills = createSkillsEditor($("#profileSkillsEditor"));
+if (APP_CONFIG.useApi) {
+  $("#profilePhotoInput").disabled = true;
+  $("#removePhotoButton").disabled = true;
+  $(".avatar-actions label").textContent = "Foto indisponível na integração remota";
+  $(".photo-note").textContent = "A foto de perfil é armazenada somente no navegador no modo demonstrativo.";
+}
 
 /* Máscara de telefone na edição */
 const telefoneEdit = $("#edit-telefone");
@@ -428,7 +434,7 @@ $("#deleteAccountButton").addEventListener("click", () => {
     confirmLabel: "Excluir definitivamente",
     danger: true,
     onConfirm: async () => {
-      PlatformService.removeUserData(session.userId);
+      if (!APP_CONFIG.useApi) PlatformService.removeUserData(session.userId);
       await UserService.deleteAccount(session.userId, session.token);
       AuthService.logout();
       showToast("Sua conta foi excluída.", "info");

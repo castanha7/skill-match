@@ -151,6 +151,7 @@ function getStoredSession() {
 export const AuthService = {
   /** Garante que as três contas públicas de demonstração existam localmente. */
   async seedDemoUser() {
+    if (APP_CONFIG.useApi) return;
     const users = allUsers();
     const shouldSeedMissingAccounts = Number(StorageService.get(SEEDED_KEY, 0)) < 2;
     let changed = false;
@@ -191,15 +192,37 @@ export const AuthService = {
   },
 
   emailJaCadastrado(email) {
+    if (APP_CONFIG.useApi) return false; // O servidor e o índice UNIQUE decidem sem expor uma enumeração de e-mails.
     const normalizedEmail = String(email ?? "").trim().toLowerCase();
     return allUsers().some((user) => user.email?.toLowerCase() === normalizedEmail);
   },
 
   async register(dados) {
     if (APP_CONFIG.useApi) {
-      const { usuario, token } = await ApiService.post("/auth/register", dados);
-      this._createSession(usuario, true, token);
-      return UserService.toPublicUser(usuario);
+      const response = await ApiService.post("/api/auth/register", {
+        role: "candidate",
+        name: String(dados.nome ?? "").trim(),
+        email: String(dados.email ?? "").trim().toLowerCase(),
+        password: dados.senha,
+        termsAccepted: true,
+        profile: {
+          nome: String(dados.nome ?? "").trim(),
+          telefone: dados.telefone,
+          dataNascimento: dados.dataNascimento,
+          cidade: dados.cidade,
+          estado: dados.estado,
+          escolaridade: dados.escolaridade,
+          curso: dados.curso,
+          instituicao: dados.instituicao,
+          areaInteresse: dados.areaInteresse,
+          tiposVaga: dados.tiposVaga || [],
+          disponibilidade: dados.disponibilidade,
+          resumo: dados.resumo,
+          habilidades: dados.habilidades || [],
+        },
+      });
+      if (response.session) this._createSession(response.user, true, response.session);
+      return { ...UserService.toPublicUser(response.user), requiresEmailConfirmation: response.requiresEmailConfirmation === true };
     }
 
     const email = String(dados.email ?? "").trim().toLowerCase();
@@ -227,6 +250,29 @@ export const AuthService = {
     const cnpj = normalizeCnpj(dados.cnpj);
     if (!isValidCnpj(cnpj)) throw new Error("Informe um CNPJ com dígitos verificadores válidos.");
     const email = String(dados.email ?? "").trim().toLowerCase();
+    if (APP_CONFIG.useApi) {
+      const response = await ApiService.post("/api/auth/register", {
+        role: "company",
+        name: String(dados.nome ?? "").trim(),
+        email,
+        password: dados.senha,
+        termsAccepted: true,
+        company: {
+          name: String(dados.companyName ?? "").trim(),
+          cnpj,
+          sector: dados.sector || "",
+          description: dados.description || "",
+          city: dados.city || "",
+          state: String(dados.state || "").toUpperCase(),
+          website: dados.website || "",
+          contactName: String(dados.nome ?? "").trim(),
+          email,
+          password: dados.senha,
+        },
+      });
+      if (response.session) this._createSession(response.user, true, response.session);
+      return { ...UserService.toPublicUser(response.user), requiresEmailConfirmation: response.requiresEmailConfirmation === true };
+    }
     if (this.emailJaCadastrado(email)) throw new Error("Este e-mail já está cadastrado. Tente fazer login.");
     const companyId = makeId("company");
     const user = UserService.normalizeUser({
@@ -264,9 +310,10 @@ export const AuthService = {
 
   async login(email, senha, lembrarMe = false, expectedRole = "candidate") {
     if (APP_CONFIG.useApi) {
-      const { usuario, token } = await ApiService.post("/auth/login", { email, senha, role: expectedRole });
-      this._createSession(usuario, lembrarMe, token);
-      return usuario;
+      const response = await ApiService.post("/api/auth/login", { email, password: senha, role: expectedRole });
+      if (!response?.session?.access_token) throw new Error("A sessão não foi iniciada. Confirme seu e-mail ou tente novamente.");
+      this._createSession(response.user, lembrarMe, response.session);
+      return UserService.toPublicUser(response.user);
     }
 
     const normalizedEmail = String(email ?? "").trim().toLowerCase();
@@ -291,14 +338,19 @@ export const AuthService = {
     return UserService.toPublicUser(user);
   },
 
-  _createSession(user, lembrarMe, token = null) {
+  _createSession(user, lembrarMe, authSession = null) {
+    const credentials = typeof authSession === "string" ? { access_token: authSession } : (authSession || {});
+    const expiresAt = Number(credentials.expires_at || credentials.expiresAt || 0);
     const session = {
       userId: user.id,
       email: user.email,
-      nome: user.nome,
+      nome: user.nome || user.name || "",
       role: user.role || "candidate",
       companyId: user.companyId || null,
-      token,
+      token: credentials.access_token || credentials.accessToken || null,
+      accessToken: credentials.access_token || credentials.accessToken || null,
+      refreshToken: credentials.refresh_token || credentials.refreshToken || null,
+      expiresAtMs: expiresAt ? (expiresAt > 1e12 ? expiresAt : expiresAt * 1000) : null,
       lembrarMe: Boolean(lembrarMe),
       expiraEm: lembrarMe ? Date.now() + APP_CONFIG.sessionMaxAge : null,
     };
@@ -346,8 +398,14 @@ export const AuthService = {
   },
 
   logout() {
+    const session = getStoredSession();
+    if (APP_CONFIG.useApi && session?.token) {
+      // Best-effort remote revocation; local credentials are removed immediately.
+      ApiService.post("/api/auth/logout", {}, session.token).catch(() => {});
+    }
     StorageService.remove(SESSION_KEY);
     StorageService.removeSessionValue(SESSION_KEY);
+    PlatformService.clearRemoteSnapshot();
   },
 
   requireAuth(allowedRoles = null) {
@@ -368,7 +426,7 @@ export const AuthService = {
   },
 
   async changePassword(userId, currentPassword, newPassword, token = null) {
-    if (APP_CONFIG.useApi) return ApiService.put("/auth/password", { currentPassword, newPassword }, token);
+    if (APP_CONFIG.useApi) return ApiService.put("/api/auth/password", { currentPassword, newPassword }, token);
     const users = allUsers();
     const index = users.findIndex((user) => user.id === userId);
     if (index === -1) throw new Error("Conta não encontrada.");
@@ -385,6 +443,16 @@ export const AuthService = {
     const reset = { email: normalizedEmail, code, expiresAt: Date.now() + 15 * 60 * 1000 };
     if (!StorageService.setSessionValue(RESET_KEY, reset)) throw new Error("Não foi possível iniciar a recuperação demonstrativa.");
     return code;
+  },
+
+  async requestPasswordReset(email) {
+    if (APP_CONFIG.useApi) return ApiService.post("/api/auth/password-reset", { email: String(email ?? "").trim().toLowerCase() });
+    return { code: this.requestPasswordResetDemo(email), demo: true };
+  },
+
+  async setPasswordAfterRecovery(newPassword, recoveryToken) {
+    if (!APP_CONFIG.useApi) throw new Error("A recuperação remota não está ativa.");
+    return ApiService.put("/api/auth/password/reset", { newPassword }, recoveryToken);
   },
 
   async completePasswordResetDemo(email, code, newPassword) {

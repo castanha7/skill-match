@@ -4,6 +4,7 @@ import ApiService from "./api.service.js";
 import { Validators } from "../utils/validators.js";
 
 const { users: USERS_KEY } = APP_CONFIG.storageKeys;
+let remoteUsers = [];
 const PROFILE_FIELDS = [
   "nome", "telefone", "dataNascimento", "cidade", "estado", "escolaridade", "curso",
   "instituicao", "areaInteresse", "tiposVaga", "disponibilidade", "resumo", "habilidades",
@@ -82,14 +83,29 @@ export const UserService = {
   },
 
   async getById(userId, token = null) {
-    if (APP_CONFIG.useApi) return ApiService.get("/candidatos/me", token);
+    if (APP_CONFIG.useApi) {
+      const response = await ApiService.get("/api/auth/profile", token);
+      const user = response?.user;
+      return user && (!userId || user.id === userId) ? this.toPublicUser(user) : null;
+    }
     const user = getUsers().find((entry) => entry.id === userId);
     return user ? this.toPublicUser(user) : null;
   },
 
+  setRemoteUsers(users) {
+    remoteUsers = Array.isArray(users) ? users.map((user) => this.toPublicUser(user)) : [];
+  },
+
+  clearRemoteUsers() {
+    remoteUsers = [];
+  },
+
   async updateEmail(userId, email, token = null) {
     const normalizedEmail = String(email ?? "").trim().toLowerCase();
-    if (APP_CONFIG.useApi) return ApiService.put("/auth/email", { email: normalizedEmail }, token);
+    if (APP_CONFIG.useApi) {
+      const response = await ApiService.put("/api/auth/email", { email: normalizedEmail }, token);
+      return { ...this.toPublicUser(response?.user || {}), emailConfirmationPending: response?.requiresEmailConfirmation === true };
+    }
     if (!Validators.email(normalizedEmail)) throw new Error("Informe um e-mail válido.");
     const users = getUsers();
     const index = users.findIndex((entry) => entry.id === userId);
@@ -103,7 +119,15 @@ export const UserService = {
   },
 
   async updateProfile(userId, dados, token = null) {
-    if (APP_CONFIG.useApi) return ApiService.put("/candidatos/me", dados, token);
+    if (APP_CONFIG.useApi) {
+      if (Object.hasOwn(dados || {}, "fotoDataUrl")) {
+        throw new Error("A foto de perfil está disponível somente no modo demonstrativo local.");
+      }
+      const permitted = Object.fromEntries(Object.entries(dados || {}).filter(([key]) => PROFILE_FIELDS.includes(key) && key !== "fotoDataUrl"));
+      if (Object.keys(permitted).length === 0) throw new Error("Não há campos de perfil compatíveis para salvar.");
+      const response = await ApiService.put("/api/auth/profile", permitted, token);
+      return this.toPublicUser(response?.user || null);
+    }
     const users = getUsers();
     const index = users.findIndex((entry) => entry.id === userId);
     if (index === -1) throw new Error("Usuário não encontrado.");
@@ -126,7 +150,7 @@ export const UserService = {
   },
 
   async deleteAccount(userId, token = null) {
-    if (APP_CONFIG.useApi) return ApiService.delete("/candidatos/me", token);
+    if (APP_CONFIG.useApi) return ApiService.delete("/api/auth/me", token);
     if (!getUsers().some((entry) => entry.id === userId)) throw new Error("Conta não encontrada.");
     const { PlatformService } = await import("./platform.service.js");
     PlatformService.removeUserData(userId);
@@ -134,17 +158,22 @@ export const UserService = {
   },
 
   listByRole(role) {
-    return getUsers()
-      .filter((user) => !role || user.role === role)
-      .map((user) => this.toPublicUser(user));
+    const users = APP_CONFIG.useApi ? remoteUsers : getUsers();
+    return users.filter((user) => !role || user.role === role).map((user) => this.toPublicUser(user));
   },
 
   listAll() {
     return this.listByRole(null);
   },
 
-  updateAccountStatus(userId, status) {
+  async updateAccountStatus(userId, status, token = null) {
     if (!new Set(["active", "blocked"]).has(status)) throw new Error("Status de conta inválido.");
+    if (APP_CONFIG.useApi) {
+      const response = await ApiService.post("/api/platform/actions", { action: "updateAccountStatus", data: { userId, status } }, token);
+      const updated = this.toPublicUser(response?.result || {});
+      remoteUsers = remoteUsers.map((user) => user.id === userId ? updated : user);
+      return updated;
+    }
     const users = getUsers();
     const index = users.findIndex((entry) => entry.id === userId);
     if (index === -1) throw new Error("Conta não encontrada.");

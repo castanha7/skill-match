@@ -2,6 +2,7 @@ import { $, $$, showToast, setFieldError, clearFieldError } from "../utils/dom.j
 import { Validators } from "../utils/validators.js";
 import { Formatters } from "../utils/formatters.js";
 import { APP_CONFIG, CATALOGS, USER_ROLES } from "../config/app.config.js";
+import ApiService from "../services/api.service.js";
 import { AuthService } from "../services/auth.service.js";
 import { UserService } from "../services/user.service.js";
 import { PlatformService } from "../services/platform.service.js";
@@ -26,6 +27,7 @@ let currentView = "home";
 let pendingModalAction = null;
 let interviewDraft = { jobType: "Primeiro Emprego", experienceLevel: "Primeira oportunidade", targetRole: "", questionId: "", answer: "" };
 let interviewReviewId = null;
+const remoteReadPending = new Set();
 
 const ICONS = {
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-6v-7h-4v7H4a1 1 0 0 1-1-1z"/></svg>',
@@ -86,32 +88,32 @@ const NAV_ITEMS = {
 const PAGE_META = {
   candidate: {
     home: ["Visão geral", "Início", "Seu próximo passo profissional começa com um perfil completo e oportunidades que façam sentido."],
-    radar: ["Descoberta demonstrativa", "Radar de oportunidades", "Empresas de exemplo e anúncios fictícios ordenados por compatibilidade estimada e região."],
-    jobs: ["Catálogo local", "Vagas", "Pesquise e filtre anúncios demonstrativos. Nenhuma vaga exibida representa contratação confirmada."],
-    favorites: ["Sua lista pessoal", "Vagas salvas", "Organize oportunidades guardadas somente neste navegador."],
-    applications: ["Acompanhamento local", "Minhas candidaturas", "Veja os interesses que você registrou neste navegador e os status de demonstração."],
+    radar: APP_CONFIG.useApi ? ["Oportunidades", "Radar de oportunidades", "Anúncios publicados e empresas ativas, com compatibilidade estimada por regras transparentes." ] : ["Descoberta demonstrativa", "Radar de oportunidades", "Empresas de exemplo e anúncios fictícios ordenados por compatibilidade estimada e região."],
+    jobs: APP_CONFIG.useApi ? ["Catálogo SkillMatch", "Vagas", "Pesquise oportunidades publicadas pela plataforma. Confira cada anúncio e as informações da empresa antes de se candidatar."] : ["Catálogo local", "Vagas", "Pesquise e filtre anúncios demonstrativos. Nenhuma vaga exibida representa contratação confirmada."],
+    favorites: ["Sua lista pessoal", "Vagas salvas", APP_CONFIG.useApi ? "Organize vagas salvas na sua conta." : "Organize oportunidades guardadas somente neste navegador."],
+    applications: ["Acompanhamento", "Minhas candidaturas", APP_CONFIG.useApi ? "Consulte suas candidaturas e as atualizações das empresas." : "Veja os interesses que você registrou neste navegador e os status de demonstração."],
     resume: ["Seu perfil profissional", "Currículo", "Visualize um currículo organizado com suas informações e use a impressão do navegador para salvar como PDF."],
     courses: ["Aprendizado contínuo", "Cursos e desenvolvimento", "Sugestões de temas para estudar. Não são cursos parceiros nem certificados oficiais."],
-    interviews: ["Treino guiado", "Preparação para entrevistas", "Pratique respostas com perguntas estruturadas e feedback por regras locais. A integração de IA está pendente."],
-    connections: ["Conexão profissional", "Empresas e mensagens", "Explore perfis empresariais e converse somente após iniciar ou aceitar uma conexão demonstrativa."],
-    notifications: ["Atualizações", "Notificações", "Avisos gerados pela demonstração local. Nenhuma comunicação foi enviada por e-mail."],
-    settings: ["Conta e privacidade", "Configurações", "Preferências salvas neste navegador. Para produção, autenticação e privacidade precisam de backend."],
+    interviews: APP_CONFIG.useApi ? ["Treino guiado e IA opcional", "Preparação para entrevistas", "Salve práticas na sua conta; o envio a um provedor de IA exige seu consentimento explícito."] : ["Treino guiado", "Preparação para entrevistas", "Pratique respostas com perguntas estruturadas e feedback por regras locais. A integração de IA está pendente."],
+    connections: ["Conexão profissional", "Empresas e mensagens", APP_CONFIG.useApi ? "Consulte empresas e converse com participantes autorizados após iniciar ou aceitar uma conexão." : "Explore perfis empresariais e converse somente após iniciar ou aceitar uma conexão demonstrativa."],
+    notifications: ["Atualizações", "Notificações", APP_CONFIG.useApi ? "Acompanhe avisos relacionados à sua conta e atividade." : "Avisos gerados pela demonstração local. Nenhuma comunicação foi enviada por e-mail."],
+    settings: ["Conta e privacidade", "Configurações", APP_CONFIG.useApi ? "Gerencie preferências, credenciais e privacidade da sua conta SkillMatch." : "Preferências salvas neste navegador. Para produção, autenticação e privacidade precisam de backend."],
   },
   company: {
-    home: ["Área da empresa", "Painel principal", "Gerencie seu perfil demonstrativo, anúncios de vaga e candidaturas recebidas localmente."],
-    "company-profile": ["Perfil empresarial", "Dados da empresa", "Edite os dados da conta de demonstração. A validação real da empresa requer serviço externo."],
-    "company-jobs": ["Publicação e gestão", "Vagas publicadas", "Crie, edite, arquive e acompanhe anúncios demonstrativos. Novas vagas aguardam revisão do admin local."],
-    "company-applicants": ["Processos demonstrativos", "Candidaturas", "Consulte currículos de pessoas que demonstraram interesse e atualize o status local."],
-    "company-talent": ["Busca com consentimento", "Banco de talentos", "Consulte somente candidatos que permitiram aparecer no banco demonstrativo. Compatibilidade segue critérios transparentes."],
+    home: ["Área da empresa", "Painel principal", APP_CONFIG.useApi ? "Gerencie o perfil empresarial, anúncios e candidaturas da sua conta." : "Gerencie seu perfil demonstrativo, anúncios de vaga e candidaturas recebidas localmente."],
+    "company-profile": ["Perfil empresarial", "Dados da empresa", APP_CONFIG.useApi ? "Edite os dados da conta. A verificação de identidade ou CNPJ não é feita automaticamente." : "Edite os dados da conta de demonstração. A validação real da empresa requer serviço externo."],
+    "company-jobs": ["Publicação e gestão", "Vagas publicadas", APP_CONFIG.useApi ? "Crie e gerencie anúncios; novos anúncios aguardam revisão da plataforma." : "Crie, edite, arquive e acompanhe anúncios demonstrativos. Novas vagas aguardam revisão do admin local."],
+    "company-applicants": ["Processos seletivos", "Candidaturas", APP_CONFIG.useApi ? "Consulte candidaturas vinculadas às suas vagas e atualize o status." : "Consulte currículos de pessoas que demonstraram interesse e atualize o status local."],
+    "company-talent": ["Busca com consentimento", "Banco de talentos", "Consulte somente candidatos que permitiram aparecer no banco de talentos. Compatibilidade segue critérios transparentes."],
     "company-connections": ["Contato autorizado", "Conexões e mensagens", "Envie convites a perfis visíveis e converse apenas quando a conexão for aceita."],
   },
   admin: {
-    home: ["Administração separada", "Dashboard", "Indicadores sobre os dados fictícios locais. Este painel não concede segurança real em uma hospedagem estática."],
-    "admin-candidates": ["Contas locais", "Gerenciamento de candidatos", "Consulte perfis e simule bloqueio ou desbloqueio de contas de demonstração."],
-    "admin-companies": ["Cadastros locais", "Gerenciamento de empresas", "Revise dados, simule verificação e controle de disponibilidade das empresas demonstrativas."],
-    "admin-jobs": ["Moderação local", "Gerenciamento de vagas", "Edite, aprove, suspenda ou remova anúncios demonstrativos antes de mostrá-los ao candidato."],
-    "admin-ads": ["Conteúdo institucional", "Controle de anúncios", "Crie comunicados demonstrativos e controle sua exibição no painel do candidato."],
-    "admin-reports": ["Suporte local", "Relatos e problemas", "Revise relatos enviados pela interface. Eles permanecem apenas no armazenamento deste navegador."],
+    home: ["Administração SkillMatch", "Dashboard", APP_CONFIG.useApi ? "Indicadores da plataforma vinculados à sua conta administrativa." : "Indicadores sobre os dados fictícios locais. Este painel não concede segurança real em uma hospedagem estática."],
+    "admin-candidates": ["Contas", "Gerenciamento de candidatos", APP_CONFIG.useApi ? "Consulte perfis e gerencie o estado das contas." : "Consulte perfis e simule bloqueio ou desbloqueio de contas de demonstração."],
+    "admin-companies": ["Cadastros", "Gerenciamento de empresas", APP_CONFIG.useApi ? "Revise cadastros e gerencie verificação e disponibilidade." : "Revise dados, simule verificação e controle de disponibilidade das empresas demonstrativas."],
+    "admin-jobs": ["Moderação", "Gerenciamento de vagas", APP_CONFIG.useApi ? "Revise, publique, suspenda ou encerre anúncios." : "Edite, aprove, suspenda ou remova anúncios demonstrativos antes de mostrá-los ao candidato."],
+    "admin-ads": ["Conteúdo institucional", "Controle de anúncios", APP_CONFIG.useApi ? "Gerencie comunicados da plataforma." : "Crie comunicados demonstrativos e controle sua exibição no painel do candidato."],
+    "admin-reports": ["Suporte", "Relatos e problemas", APP_CONFIG.useApi ? "Revise relatos enviados à plataforma." : "Revise relatos enviados pela interface. Eles permanecem apenas no armazenamento deste navegador."],
   },
 };
 
@@ -386,7 +388,7 @@ function renderCandidateHome() {
   const completedItems = completeness.checklist.filter((item) => item.done && !item.optional).length;
   const requiredItems = completeness.checklist.filter((item) => !item.optional).length;
   return `<div class="stat-grid">
-    <div class="stat-card"><div class="stat-card-top"><span>Compatíveis no catálogo</span><span class="stat-icon">${ICONS.radar}</span></div><strong>${PlatformService.getPublishedJobs().length}</strong><span>Anúncios de demonstração, não confirmados</span></div>
+    <div class="stat-card"><div class="stat-card-top"><span>Compatíveis no catálogo</span><span class="stat-icon">${ICONS.radar}</span></div><strong>${PlatformService.getPublishedJobs().length}</strong><span>${APP_CONFIG.useApi ? "Anúncios publicados na plataforma" : "Anúncios de demonstração, não confirmados"}</span></div>
     <div class="stat-card"><div class="stat-card-top"><span>Candidaturas em andamento</span><span class="stat-icon">${ICONS.applications}</span></div><strong>${activeApplications}</strong><span>Registros locais do seu perfil</span></div>
     <div class="stat-card"><div class="stat-card-top"><span>Perfil completo</span><span class="stat-icon">${ICONS.profile}</span></div><strong>${completeness.percentage}%</strong><span>${completedItems} de ${requiredItems} itens essenciais</span></div>
     <div class="stat-card"><div class="stat-card-top"><span>Não lidas</span><span class="stat-icon">${ICONS.notifications}</span></div><strong>${unread}</strong><span>Avisos somente deste navegador</span></div>
@@ -400,17 +402,17 @@ function renderCandidateHome() {
       <div class="quick-link-row">${button("Editar meu perfil", "go-profile", { small: true })}${button("Ver currículo", "go-view", { style: "btn-ghost", small: true, id: "resume" })}</div>
     </section>
     <section class="panel-card is-tinted">
-      <div class="eyebrow">Radar SkillMatch · demonstração</div><h2>Oportunidades que combinam com você</h2>
-      <p style="margin-top:.45rem">A compatibilidade usa regras locais de área, habilidades, tipo de vaga e região. Não é inteligência artificial nem integração de vagas.</p>
+      <div class="eyebrow">Radar SkillMatch · ${APP_CONFIG.useApi ? "catálogo da plataforma" : "demonstração"}</div><h2>Oportunidades que combinam com você</h2>
+      <p style="margin-top:.45rem">A compatibilidade usa regras transparentes de área, habilidades, tipo de vaga e região. Não é inteligência artificial.</p>
       <div class="quick-link-row">${button("Abrir meu radar", "go-view", { style: "btn-ghost", small: true, id: "radar" })}</div>
     </section>
   </div>
   <section class="panel-card" style="margin-top:1rem">
-    <div class="card-head"><div class="card-head-copy"><h2>Oportunidades recomendadas</h2><p class="panel-card-subtitle">Anúncios fictícios; as sugestões podem variar diariamente e não repetem oportunidades nas quais você já registrou interesse.</p></div>${button("Ver todas", "go-view", { style: "btn-ghost", small: true, id: "jobs" })}</div>
+    <div class="card-head"><div class="card-head-copy"><h2>Oportunidades recomendadas</h2><p class="panel-card-subtitle">${APP_CONFIG.useApi ? "Anúncios publicados; as sugestões não repetem oportunidades nas quais você já registrou interesse." : "Anúncios fictícios; as sugestões podem variar diariamente e não repetem oportunidades nas quais você já registrou interesse."}</p></div>${button("Ver todas", "go-view", { style: "btn-ghost", small: true, id: "jobs" })}</div>
     <div class="job-list">${recommendations.length ? recommendations.map(({ job }) => jobCard(job, { showScore: true, showDescription: false })).join("") : emptyState("Sem novas sugestões", "Você já registrou interesse em todas as oportunidades disponíveis ou não há anúncios no catálogo.")}</div>
   </section>
   <div class="panel-grid two" style="margin-top:1rem">
-    <section class="panel-card"><div class="card-head"><div><h2>Notificação recente</h2><p class="panel-card-subtitle">Avisos são gerados localmente na demonstração.</p></div>${button("Abrir notificações", "go-view", { style: "btn-ghost", small: true, id: "notifications" })}</div>
+    <section class="panel-card"><div class="card-head"><div><h2>Notificação recente</h2><p class="panel-card-subtitle">${APP_CONFIG.useApi ? "Avisos da sua conta SkillMatch." : "Avisos são gerados localmente na demonstração."}</p></div>${button("Abrir notificações", "go-view", { style: "btn-ghost", small: true, id: "notifications" })}</div>
       ${newest ? `<div class="notification-card unread"><span class="notification-icon">${ICONS.notifications}</span><div class="notification-copy"><strong>${escapeHtml(newest.title)}</strong><p>${escapeHtml(newest.message)}</p><small>${formattedDate(newest.createdAt, true)}</small></div></div>` : emptyState("Tudo em dia", "Não há avisos novos. Consulte a área de notificações para ver os avisos já lidos.", "notifications")}
     </section>
     <section class="panel-card"><div class="card-head"><div><h2>Plano de desenvolvimento</h2><p class="panel-card-subtitle">Sugestões de estudo, sem vínculo com cursos pagos ou certificados.</p></div>${button("Explorar temas", "go-view", { style: "btn-ghost", small: true, id: "courses" })}</div><p style="color:var(--text-muted);font-size:.85rem">${PlatformService.getCourseProgress(currentUser.id).planned.length} tema(s) no seu plano e ${PlatformService.getCourseProgress(currentUser.id).completed.length} marcado(s) como concluído(s).</p></section>
@@ -543,6 +545,26 @@ function renderFavoritesPage() {
   return `<section class="panel-card" style="margin-bottom:1rem"><div class="card-head"><div><h2>Suas vagas favoritas</h2><p class="panel-card-subtitle">Lista privada deste navegador. Favoritar não envia seus dados à empresa.</p></div><span class="demo-tag">${favorites.length} salva(s)</span></div></section><div class="job-list">${cards || emptyState("Nenhuma vaga salva", "Use “Salvar vaga” no catálogo demonstrativo para organizar oportunidades de interesse.", "bookmark")}</div>`;
 }
 
+function interviewFeedbackForView(feedback) {
+  if (!feedback) return null;
+  if (Array.isArray(feedback.observations)) return feedback;
+  const observations = [
+    ["Clareza", feedback.clarity],
+    ["Comunicação", feedback.communication],
+    ["Objetividade", feedback.objectivity],
+    ["Apresentação de habilidades", feedback.skillPresentation],
+  ].filter(([, text]) => typeof text === "string" && text.trim()).map(([label, text]) => ({ label, text }));
+  if (Array.isArray(feedback.strengths) && feedback.strengths.length) {
+    observations.unshift({ label: "Pontos fortes", text: feedback.strengths.join(" ") });
+  }
+  return {
+    observations,
+    improvements: Array.isArray(feedback.improvements) ? feedback.improvements : [],
+    answerStructure: feedback.suggestedStructure || "",
+    disclaimer: "Feedback educativo gerado por IA; não é avaliação de aptidão, nota ou decisão de contratação.",
+  };
+}
+
 function renderInterviewPracticePage() {
   const jobTypes = CATALOGS.tiposVaga;
   if (!jobTypes.includes(interviewDraft.jobType)) interviewDraft.jobType = "Primeiro Emprego";
@@ -553,16 +575,23 @@ function renderInterviewPracticePage() {
   const questionOptions = questions.map((question) => `<option value="${escapeHtml(question.id)}" ${question.id === interviewDraft.questionId ? "selected" : ""}>${escapeHtml(question.question)}</option>`).join("");
   const activeReview = history.find((entry) => entry.id === interviewReviewId);
   const speechSupported = Boolean(globalThis.window?.SpeechRecognition || globalThis.window?.webkitSpeechRecognition);
-  const feedback = activeReview?.feedback;
-  return `<section class="panel-card" style="margin-bottom:1rem"><div class="card-head"><div><h2>Pratique no seu ritmo</h2><p class="panel-card-subtitle">Perguntas estruturadas para Jovem Aprendiz, estágio e primeiro emprego. Suas respostas ficam neste navegador.</p></div><span class="demo-tag">Treino guiado</span></div><p class="form-help">A IA não está conectada nesta versão. O retorno abaixo usa somente uma checklist simples de extensão e palavras-chave: não atribui nota, não mede aptidão e não prevê contratação. Não inclua dados pessoais sensíveis.</p></section>
+  const feedback = interviewFeedbackForView(activeReview?.feedback);
+  const storageNotice = APP_CONFIG.useApi
+    ? "As respostas e o feedback são salvos na sua conta SkillMatch. A revisão guiada é processada localmente; a análise por IA só ocorre se você marcar o consentimento abaixo."
+    : "Suas respostas ficam apenas neste navegador. A revisão usa uma checklist simples de extensão e palavras-chave; não atribui nota, não mede aptidão e não prevê contratação.";
+  const consentControl = APP_CONFIG.useApi
+    ? `<label class="check-row" style="margin:.8rem 0"><input type="checkbox" id="interviewAiConsent" /><span>Concordo em enviar esta pergunta, minha resposta, o cargo/experiência escolhidos e minhas habilidades informadas a um provedor externo de IA para gerar feedback educativo. Posso deixar desmarcado e usar a revisão guiada.</span></label>`
+    : "";
+  return `<section class="panel-card" style="margin-bottom:1rem"><div class="card-head"><div><h2>Pratique no seu ritmo</h2><p class="panel-card-subtitle">Perguntas estruturadas para Jovem Aprendiz, estágio e primeiro emprego.</p></div><span class="demo-tag">${APP_CONFIG.useApi ? "Histórico da conta" : "Treino guiado"}</span></div><p class="form-help">${storageNotice} Não inclua dados pessoais sensíveis.</p></section>
     <form class="form-panel" data-form="interview-practice" novalidate>
       <div class="form-row"><div class="field"><label for="interviewType">Tipo de oportunidade</label><select class="input" id="interviewType">${optionList(jobTypes, interviewDraft.jobType, "Selecione")}</select></div><div class="field"><label for="interviewExperience">Experiência que deseja praticar</label><select class="input" id="interviewExperience">${optionList(["Primeira oportunidade", "Tenho projetos ou atividades", "Já tive experiência formal"], interviewDraft.experienceLevel, "Selecione")}</select></div></div>
       <div class="field"><label for="interviewTargetRole">Cargo ou área desejada <span class="optional">(opcional)</span></label><input class="input" id="interviewTargetRole" maxlength="120" value="${escapeHtml(interviewDraft.targetRole)}" placeholder="Ex.: atendimento, auxiliar administrativo" /></div>
       <div class="field"><label for="interviewQuestion">Pergunta para praticar</label><select class="input" id="interviewQuestion">${questionOptions}</select></div>
       <div class="field"><label for="interviewAnswer">Sua resposta</label><textarea class="input" id="interviewAnswer" rows="6" maxlength="2000" placeholder="Responda com suas palavras. Experiências escolares, projetos e atividades também contam.">${escapeHtml(interviewDraft.answer)}</textarea><p class="error-msg">Escreva ao menos 10 caracteres para revisar sua resposta.</p><p class="form-help">${speechSupported ? "Você pode usar a entrada por voz do navegador; a disponibilidade e o processamento dependem dele." : "Entrada por voz não está disponível neste navegador; responda por texto."}</p></div>
-      <div class="form-actions">${speechSupported ? button("Ditado por voz", "speech-to-text", { style: "btn-ghost", small: true }) : ""}<button type="submit" class="btn btn-primary">Revisar minha resposta</button></div>
+      ${consentControl}
+      <div class="form-actions">${speechSupported ? button("Ditado por voz", "speech-to-text", { style: "btn-ghost", small: true }) : ""}<button type="submit" class="btn btn-primary">${APP_CONFIG.useApi ? "Revisar e salvar resposta" : "Revisar minha resposta"}</button></div>
     </form>
-    ${feedback ? `<section class="panel-card" style="margin-top:1rem"><div class="card-head"><div><h2>Reflexão guiada</h2><p class="panel-card-subtitle">${escapeHtml(activeReview.question)}</p></div><span class="demo-tag">Sem nota / sem IA</span></div><div class="panel-grid two">${feedback.observations.map((item) => `<article class="application-card"><div><h3>${escapeHtml(item.label)}</h3><p>${escapeHtml(item.text)}</p></div></article>`).join("")}</div><div class="app-modal-section"><h3>Pontos para experimentar</h3><ul>${feedback.improvements.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul><p style="margin-top:.6rem"><strong>Estrutura possível:</strong> ${escapeHtml(feedback.answerStructure)}</p><p class="form-help" style="margin-top:.6rem">${escapeHtml(feedback.disclaimer)}</p></div></section>` : ""}
+    ${feedback ? `<section class="panel-card" style="margin-top:1rem"><div class="card-head"><div><h2>Reflexão guiada</h2><p class="panel-card-subtitle">${escapeHtml(activeReview.question)}</p></div><span class="demo-tag">${activeReview.provider === "configured-ai" ? "IA educativa · sem nota" : "Sem nota / sem IA"}</span></div><div class="panel-grid two">${feedback.observations.map((item) => `<article class="application-card"><div><h3>${escapeHtml(item.label)}</h3><p>${escapeHtml(item.text)}</p></div></article>`).join("")}</div><div class="app-modal-section"><h3>Pontos para experimentar</h3><ul>${feedback.improvements.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul><p style="margin-top:.6rem"><strong>Estrutura possível:</strong> ${escapeHtml(feedback.answerStructure)}</p><p class="form-help" style="margin-top:.6rem">${escapeHtml(feedback.disclaimer)}</p></div></section>` : ""}
     <section class="panel-card" style="margin-top:1rem"><div class="card-head"><div><h2>Histórico de prática</h2><p class="panel-card-subtitle">Registros locais para acompanhar respostas e revisar sua própria evolução; não são avaliações de recrutamento.</p></div><span class="demo-tag">${history.length} sessão(ões)</span></div><div class="job-list">${history.length ? history.slice(0, 8).map((entry) => `<article class="application-card"><div><h3>${escapeHtml(entry.jobType)}${entry.targetRole ? ` · ${escapeHtml(entry.targetRole)}` : ""}</h3><p>${formattedDate(entry.createdAt, true)} · ${escapeHtml(entry.question)}</p><details><summary>Rever sua resposta</summary><p style="margin-top:.5rem;white-space:pre-wrap">${escapeHtml(entry.answer)}</p></details></div><button type="button" class="btn btn-ghost btn-sm" data-action="delete-interview" data-id="${escapeHtml(entry.id)}">Excluir</button></article>`).join("") : emptyState("Nenhuma prática salva", "Envie uma resposta para criar seu primeiro registro local.", "sparkles")}</div></section>`;
 }
 
@@ -573,7 +602,6 @@ function renderConversationCard(connection, otherName, otherSubtitle) {
     : "";
   let thread = "";
   if (connection.status === "connected") {
-    PlatformService.markConnectionMessagesRead(connection.id, session.userId);
     const messages = PlatformService.getConnectionMessages(connection.id, session.userId);
     thread = `<ol class="application-history">${messages.length ? messages.map((message) => `<li><strong>${message.senderId === session.userId ? "Você" : escapeHtml(otherName)}</strong> · ${formattedDate(message.createdAt, true)}<br>${escapeHtml(message.body)}</li>`).join("") : "<li>Conexão aceita. Envie uma mensagem profissional para iniciar a conversa.</li>"}</ol>
       <form class="form-panel" data-form="connection-message" data-connection-id="${escapeHtml(connection.id)}" novalidate><div class="field"><label for="message-${escapeHtml(connection.id)}">Nova mensagem</label><textarea class="input" id="message-${escapeHtml(connection.id)}" rows="3" maxlength="2000" placeholder="Escreva uma mensagem respeitosa e objetiva."></textarea><p class="error-msg">Escreva uma mensagem.</p></div><div class="form-actions"><button type="submit" class="btn btn-primary btn-sm">Enviar mensagem</button></div></form>
@@ -620,6 +648,7 @@ function openInterviewInvitationDialog(applicationId) {
 
 function renderCandidateConnectionsPage() {
   const connections = PlatformService.getCandidateConnections(currentUser.id);
+  connections.forEach(markConnectedMessagesRead);
   const companies = PlatformService.getCompanies({ includeInactive: true }).filter((company) => company.active !== false);
   const directory = companies.map((company) => {
     const connection = connections.find((entry) => entry.companyId === company.id);
@@ -628,7 +657,7 @@ function renderCandidateConnectionsPage() {
     if (connection?.status === "connected") action = `<span class="status-pill success">Conectada</span>`;
     else if (connection?.status === "pending") action = `<span class="status-pill pending">Convite recebido</span>`;
     else if (connection) action = `<span class="status-pill">${connection.status === "blocked" ? "Bloqueada" : "Contato encerrado"}</span>`;
-    else if (company.ownerId) action = `<button type="button" class="btn btn-primary btn-sm" data-action="start-company-connection" data-id="${escapeHtml(company.id)}">Demonstrar interesse</button>`;
+    else if (company.ownerId || APP_CONFIG.useApi) action = `<button type="button" class="btn btn-primary btn-sm" data-action="start-company-connection" data-id="${escapeHtml(company.id)}">${APP_CONFIG.useApi ? "Enviar apresentação" : "Demonstrar interesse"}</button>`;
     else action = `<span class="form-help">Sem conta habilitada para receber mensagens.</span>`;
     return `<article class="company-found-card"><span class="company-found-icon">${ICONS.company}</span><div><h3>${escapeHtml(company.name)}</h3><p>${escapeHtml(company.sector || "Setor não informado")} · ${escapeHtml(locationText(company))}</p><p>${escapeHtml(company.description || "Descrição não informada.")}</p>${website ? `<p><a href="${escapeHtml(website)}" target="_blank" rel="noopener noreferrer">Site da empresa ↗</a></p>` : ""}<span class="demo-tag">${company.isDemo ? "Demonstração" : "Cadastro local"}</span></div>${action}</article>`;
   }).join("");
@@ -699,9 +728,7 @@ function renderCompanyTalentResults() {
 
 function renderCompanyConnectionsPage() {
   const connections = PlatformService.getCompanyConnections(session.companyId);
-  connections.forEach((connection) => {
-    if (connection.status === "connected") PlatformService.markConnectionMessagesRead(connection.id, session.userId);
-  });
+  connections.forEach(markConnectedMessagesRead);
   const unread = PlatformService.getUnreadMessageCount(session.userId);
   const cards = connections.map((connection) => renderConversationCard(
     connection,
@@ -954,6 +981,37 @@ function askConfirmation(title, text, label, action, danger = false) {
   pendingModalAction = action;
 }
 
+function remoteSettings(settings = {}) {
+  return Object.fromEntries(["distanceMaxKm", "visibleToCompanies", "notifyNewJobs", "radarAddress", "radarCity", "radarState", "radarNeighborhood", "radarType", "radarArea", "radarModality"].filter((key) => settings[key] !== undefined).map((key) => [key, settings[key]]));
+}
+
+function performPlatformAction(action, data, localAction, options = {}) {
+  return APP_CONFIG.useApi
+    ? PlatformService.performRemoteAction(action, data, session?.token, options)
+    : localAction();
+}
+
+function markConnectedMessagesRead(connection) {
+  if (connection.status !== "connected") return;
+  let messages;
+  try { messages = PlatformService.getConnectionMessages(connection.id, session.userId); }
+  catch { return; }
+  if (!messages.some((message) => message.recipientId === session.userId && !message.read)) return;
+  if (!APP_CONFIG.useApi) {
+    PlatformService.markConnectionMessagesRead(connection.id, session.userId);
+    return;
+  }
+  if (remoteReadPending.has(connection.id)) return;
+  remoteReadPending.add(connection.id);
+  performPlatformAction("markConnectionMessagesRead", { connectionId: connection.id }, null, { refresh: false })
+    .then(() => {
+      PlatformService.markRemoteMessagesRead(connection.id, session.userId);
+      if (currentView === "connections" || currentView === "company-connections") renderPage();
+    })
+    .catch((error) => showToast(error.message || "Não foi possível atualizar a leitura das mensagens.", "error"))
+    .finally(() => remoteReadPending.delete(connection.id));
+}
+
 function openJobDetails(jobId) {
   const job = PlatformService.getAllJobs().find((entry) => entry.id === jobId);
   if (!job) { showToast("Este anúncio não está mais disponível.", "error"); return; }
@@ -1080,7 +1138,7 @@ function openMobileMenu() {
   menuToggle.setAttribute("aria-label", "Fechar menu");
 }
 
-function runAction(element) {
+async function runAction(element) {
   const action = element.dataset.action;
   const id = element.dataset.id;
   if (!action) return;
@@ -1091,8 +1149,8 @@ function runAction(element) {
     case "job-details": openJobDetails(id); break;
     case "toggle-favorite": {
       try {
-        const saved = PlatformService.toggleFavorite(currentUser.id, id);
-        showToast(saved ? "Vaga salva na sua lista local." : "Vaga removida das suas salvas.", "success");
+        const saved = await performPlatformAction("toggleFavorite", { jobId: id }, () => PlatformService.toggleFavorite(currentUser.id, id));
+        showToast(saved ? (APP_CONFIG.useApi ? "Vaga salva na sua lista." : "Vaga salva na sua lista local.") : "Vaga removida das suas salvas.", "success");
         if (currentView === "jobs") renderFilteredJobs();
         else renderPage();
       } catch (error) { showToast(error.message, "error"); }
@@ -1104,19 +1162,19 @@ function runAction(element) {
     case "respond-interview-invitation": {
       try {
         const response = element.dataset.response;
-        PlatformService.respondToInterviewInvitation(id, currentUser.id, response);
+        await performPlatformAction("respondToInterviewInvitation", { invitationId: id, response }, () => PlatformService.respondToInterviewInvitation(id, currentUser.id, response));
         renderPage();
-        showToast(response === "accepted" ? "Entrevista aceita; os detalhes seguem no painel demonstrativo." : "Convite recusado sem compartilhar seus dados de contato.", "success");
+        showToast(response === "accepted" ? (APP_CONFIG.useApi ? "Convite de entrevista aceito." : "Entrevista aceita; os detalhes seguem no painel demonstrativo.") : "Convite recusado sem compartilhar seus dados de contato.", "success");
       } catch (error) { showToast(error.message, "error"); }
       break;
     }
     case "cancel-interview-invitation":
-      askConfirmation("Cancelar este convite?", "O candidato receberá um aviso local, e o status ficará registrado como cancelado.", "Cancelar convite", () => {
+      askConfirmation("Cancelar este convite?", APP_CONFIG.useApi ? "O candidato receberá uma notificação e o convite será marcado como cancelado." : "O candidato receberá um aviso local, e o status ficará registrado como cancelado.", "Cancelar convite", async () => {
         try {
-          PlatformService.cancelInterviewInvitation(id, session.companyId, session.userId);
+          await performPlatformAction("cancelInterviewInvitation", { invitationId: id }, () => PlatformService.cancelInterviewInvitation(id, session.companyId, session.userId));
           closeDialog();
           renderPage();
-          showToast("Convite cancelado localmente.", "info");
+          showToast(APP_CONFIG.useApi ? "Convite cancelado." : "Convite cancelado localmente.", "info");
         } catch (error) { showToast(error.message, "error"); }
       }, true);
       break;
@@ -1124,7 +1182,7 @@ function runAction(element) {
     case "decline-connection": {
       try {
         const accepted = action === "accept-connection";
-        PlatformService.respondToConnection(id, currentUser.id, accepted);
+        await performPlatformAction("respondToConnection", { connectionId: id, accept: accepted }, () => PlatformService.respondToConnection(id, currentUser.id, accepted));
         renderPage();
         showToast(accepted ? "Convite aceito; a conversa está liberada." : "Convite recusado. Nenhum contato foi compartilhado.", "success");
       } catch (error) { showToast(error.message, "error"); }
@@ -1132,24 +1190,24 @@ function runAction(element) {
     }
     case "toggle-saved-talent": {
       try {
-        const saved = PlatformService.toggleSavedTalent(session.companyId, session.userId, id);
+        const saved = await performPlatformAction("toggleSavedTalent", { candidateId: id }, () => PlatformService.toggleSavedTalent(session.companyId, session.userId, id));
         renderCompanyTalentResults();
-        showToast(saved ? "Talento salvo na lista local da empresa." : "Talento removido da lista local.", "success");
+        showToast(saved ? (APP_CONFIG.useApi ? "Perfil salvo na lista da empresa." : "Talento salvo na lista local da empresa.") : (APP_CONFIG.useApi ? "Perfil removido da lista." : "Talento removido da lista local."), "success");
       } catch (error) { showToast(error.message, "error"); }
       break;
     }
     case "block-connection":
-      askConfirmation("Bloquear este contato?", "A conversa será encerrada neste navegador e não aceitará novas mensagens.", "Bloquear contato", () => {
-        PlatformService.blockConnection(id, session.userId);
+      askConfirmation("Bloquear este contato?", APP_CONFIG.useApi ? "A conversa será encerrada e não aceitará novas mensagens." : "A conversa será encerrada neste navegador e não aceitará novas mensagens.", "Bloquear contato", async () => {
+        await performPlatformAction("blockConnection", { connectionId: id }, () => PlatformService.blockConnection(id, session.userId));
         closeDialog();
         renderPage();
-        showToast("Contato bloqueado localmente.", "info");
+        showToast(APP_CONFIG.useApi ? "Contato bloqueado." : "Contato bloqueado localmente.", "info");
       }, true);
       break;
     case "report-connection": openReportDialog(id); break;
     case "delete-interview":
-      askConfirmation("Excluir esta prática?", "A resposta e o feedback serão removidos do histórico local deste navegador.", "Excluir prática", () => {
-        PlatformService.deleteInterviewPractice(id, currentUser.id);
+      askConfirmation("Excluir esta prática?", APP_CONFIG.useApi ? "A resposta e o feedback serão removidos do seu histórico salvo." : "A resposta e o feedback serão removidos do histórico local deste navegador.", "Excluir prática", async () => {
+        await performPlatformAction("deleteInterviewPractice", { interviewId: id }, () => PlatformService.deleteInterviewPractice(id, currentUser.id));
         if (interviewReviewId === id) interviewReviewId = null;
         closeDialog();
         renderPage();
@@ -1159,38 +1217,38 @@ function runAction(element) {
     case "speech-to-text": startSpeechRecognition(); break;
     case "apply-job": {
       try {
-        PlatformService.applyToJob(id, currentUser);
+        await performPlatformAction("applyToJob", { jobId: id }, () => PlatformService.applyToJob(id, currentUser));
         closeDialog();
-        showToast("Interesse registrado somente no ambiente demonstrativo.", "success");
+        showToast(APP_CONFIG.useApi ? "Candidatura enviada à empresa." : "Interesse registrado somente no ambiente demonstrativo.", "success");
         renderPage();
       } catch (error) { showToast(error.message, "error"); }
       break;
     }
     case "withdraw-application": {
-      askConfirmation("Desistir deste interesse?", "O registro ficará como “Desistiu” no ambiente local. Nenhuma empresa real será avisada.", "Desistir", () => {
-        PlatformService.withdrawApplication(id, currentUser.id);
+      askConfirmation("Desistir desta candidatura?", APP_CONFIG.useApi ? "A candidatura será marcada como desistida e a empresa responsável receberá a atualização." : "O registro ficará como “Desistiu” no ambiente local. Nenhuma empresa real será avisada.", "Desistir", async () => {
+        await performPlatformAction("withdrawApplication", { applicationId: id }, () => PlatformService.withdrawApplication(id, currentUser.id));
         closeDialog();
-        showToast("Interesse encerrado localmente.", "info");
+        showToast(APP_CONFIG.useApi ? "Candidatura encerrada." : "Interesse encerrado localmente.", "info");
         renderPage();
       }, true);
       break;
     }
     case "mark-all-notifications":
-      PlatformService.markAllNotificationsRead(currentUser.id);
+      await performPlatformAction("markAllNotificationsRead", {}, () => PlatformService.markAllNotificationsRead(currentUser.id));
       renderPage();
       showToast("Notificações marcadas como lidas.", "success");
       break;
     case "open-notification": {
       const notification = PlatformService.getCandidateNotifications(currentUser.id).find((entry) => entry.id === id);
       if (!notification) break;
-      PlatformService.markNotificationRead(id, currentUser.id);
+      await performPlatformAction("markNotificationRead", { notificationId: id }, () => PlatformService.markNotificationRead(id, currentUser.id));
       const target = viewIsAllowed(notification.targetView) ? notification.targetView : "notifications";
       setView(target);
       if (notification.targetView === "jobs" && notification.linkId) setTimeout(() => openJobDetails(notification.linkId), 0);
       break;
     }
     case "course-progress":
-      PlatformService.setCourseProgress(currentUser.id, id, element.dataset.progress);
+      await performPlatformAction("setCourseProgress", { courseId: id, action: element.dataset.progress }, () => PlatformService.setCourseProgress(currentUser.id, id, element.dataset.progress));
       renderPage();
       showToast(element.dataset.progress === "complete" ? "Tema marcado como concluído neste navegador." : "Plano de desenvolvimento atualizado.", "success");
       break;
@@ -1206,69 +1264,70 @@ function runAction(element) {
     case "toggle-company-job": {
       const active = element.dataset.active === "true";
       try {
-        PlatformService.setJobActive(id, session.companyId, session.userId, active, "company");
+        await performPlatformAction("setJobActive", { jobId: id, active }, () => PlatformService.setJobActive(id, session.companyId, session.userId, active, "company"));
         renderPage();
         showToast(active ? "Anúncio reativado; aguarda moderação se necessário." : "Anúncio pausado.", "success");
       } catch (error) { showToast(error.message, "error"); }
       break;
     }
     case "archive-company-job":
-      askConfirmation("Excluir este anúncio?", "O anúncio será arquivado no ambiente demonstrativo e deixará de aparecer aos candidatos. Candidaturas existentes permanecem registradas.", "Excluir anúncio", () => {
-        PlatformService.archiveCompanyJob(id, session.companyId, session.userId);
+      askConfirmation("Excluir este anúncio?", APP_CONFIG.useApi ? "O anúncio será encerrado e deixará de aparecer no catálogo. Candidaturas existentes permanecem registradas." : "O anúncio será arquivado no ambiente demonstrativo e deixará de aparecer aos candidatos. Candidaturas existentes permanecem registradas.", "Excluir anúncio", async () => {
+        await performPlatformAction("archiveCompanyJob", { jobId: id }, () => PlatformService.archiveCompanyJob(id, session.companyId, session.userId));
         closeDialog();
         renderPage();
-        showToast("Anúncio arquivado.", "success");
+        showToast(APP_CONFIG.useApi ? "Anúncio arquivado." : "Anúncio arquivado.", "success");
       }, true);
       break;
     case "view-candidate": openCandidateResume(id); break;
     case "toggle-candidate-status": {
-      const user = UserService.updateAccountStatus(id, element.dataset.status);
+      const user = await UserService.updateAccountStatus(id, element.dataset.status, session.token);
+      if (APP_CONFIG.useApi) await PlatformService.loadRemoteSnapshot(session.token);
       renderPage();
-      showToast(`Conta ${user.status === "blocked" ? "bloqueada" : "desbloqueada"} localmente.`, "info");
+      showToast(APP_CONFIG.useApi ? `Conta ${user.status === "blocked" ? "suspensa" : "reativada"}.` : `Conta ${user.status === "blocked" ? "bloqueada" : "desbloqueada"} localmente.`, "info");
       break;
     }
     case "edit-admin-company": openCompanyAdminEditor(id); break;
     case "toggle-company-verification":
-      PlatformService.setCompanyVerified(id, element.dataset.verified === "true");
+      await performPlatformAction("setCompanyVerified", { companyId: id, verified: element.dataset.verified === "true" }, () => PlatformService.setCompanyVerified(id, element.dataset.verified === "true"));
       renderPage();
-      showToast("Marca de revisão demonstrativa atualizada.", "success");
+      showToast(APP_CONFIG.useApi ? "Estado de verificação da empresa atualizado." : "Marca de revisão demonstrativa atualizada.", "success");
       break;
     case "toggle-company-active":
-      PlatformService.setCompanyActive(id, element.dataset.active === "true");
+      await performPlatformAction("setCompanyActive", { companyId: id, active: element.dataset.active === "true" }, () => PlatformService.setCompanyActive(id, element.dataset.active === "true"));
       renderPage();
-      showToast("Disponibilidade da empresa atualizada no catálogo local.", "success");
+      showToast(APP_CONFIG.useApi ? "Estado da empresa atualizado." : "Disponibilidade da empresa atualizada no catálogo local.", "success");
       break;
     case "edit-admin-job": openJobEditor(id, "admin"); break;
     case "toggle-job-approval":
-      PlatformService.setJobApproval(id, element.dataset.approved === "true");
+      await performPlatformAction("setJobActive", { jobId: id, active: element.dataset.approved === "true" }, () => PlatformService.setJobApproval(id, element.dataset.approved === "true"));
       renderPage();
-      showToast(element.dataset.approved === "true" ? "Anúncio aprovado no catálogo demonstrativo." : "Anúncio suspenso localmente.", "success");
+      showToast(APP_CONFIG.useApi ? (element.dataset.approved === "true" ? "Anúncio publicado após revisão." : "Anúncio suspenso.") : (element.dataset.approved === "true" ? "Anúncio aprovado no catálogo demonstrativo." : "Anúncio suspenso localmente."), "success");
       break;
     case "remove-admin-job":
-      askConfirmation("Remover anúncio?", "Ele deixará de aparecer para candidatos, mas o registro de demonstração permanece na lista administrativa.", "Remover", () => {
-        PlatformService.setJobActive(id, "", "", false, "admin");
+      askConfirmation("Remover anúncio?", APP_CONFIG.useApi ? "O anúncio será encerrado e deixará de aparecer para candidatos." : "Ele deixará de aparecer para candidatos, mas o registro de demonstração permanece na lista administrativa.", "Remover", async () => {
+        await performPlatformAction("setJobActive", { jobId: id, active: false }, () => PlatformService.setJobActive(id, "", "", false, "admin"));
         closeDialog();
         renderPage();
-        showToast("Anúncio removido do catálogo local.", "success");
+        showToast(APP_CONFIG.useApi ? "Anúncio encerrado." : "Anúncio removido do catálogo local.", "success");
       }, true);
       break;
     case "new-ad": openAdEditor(); break;
     case "edit-ad": openAdEditor(id); break;
     case "toggle-ad":
-      PlatformService.setAdActive(id, element.dataset.active === "true");
+      await performPlatformAction("setAdActive", { adId: id, active: element.dataset.active === "true" }, () => PlatformService.setAdActive(id, element.dataset.active === "true"));
       renderPage();
       showToast("Exibição do comunicado atualizada.", "success");
       break;
     case "delete-ad":
-      askConfirmation("Excluir comunicado?", "O comunicado será removido do armazenamento local da demonstração.", "Excluir", () => {
-        PlatformService.deleteAd(id);
+      askConfirmation("Excluir comunicado?", APP_CONFIG.useApi ? "O comunicado será removido da plataforma." : "O comunicado será removido do armazenamento local da demonstração.", "Excluir", async () => {
+        await performPlatformAction("deleteAd", { adId: id }, () => PlatformService.deleteAd(id));
         closeDialog();
         renderPage();
         showToast("Comunicado excluído.", "success");
       }, true);
       break;
     case "toggle-report":
-      PlatformService.setReportStatus(id, element.dataset.status);
+      await performPlatformAction("setReportStatus", { reportId: id, status: element.dataset.status }, () => PlatformService.setReportStatus(id, element.dataset.status));
       renderPage();
       showToast("Status do relato atualizado.", "success");
       break;
@@ -1322,14 +1381,28 @@ async function handleFormSubmit(form) {
         questionId,
         answer: answer.value.trim(),
       };
-      const feedback = InterviewPracticeService.reviewAnswer({ answer: interviewDraft.answer, candidate: currentUser });
-      const saved = PlatformService.saveInterviewPractice(currentUser.id, {
-        ...interviewDraft, question: question.question, feedback,
-      });
+      let saved;
+      const consentToAi = $("#interviewAiConsent", form)?.checked === true;
+      if (consentToAi && APP_CONFIG.useApi) {
+        const response = await ApiService.post("/api/interviews/feedback", {
+          ...interviewDraft,
+          question: question.question,
+          skills: currentUser.habilidades || [],
+          consentToExternalProcessing: true,
+        }, session.token);
+        saved = response.session;
+        await PlatformService.loadRemoteSnapshot(session.token);
+      } else {
+        if (consentToAi && !APP_CONFIG.useApi) throw new Error("A análise por IA exige a API configurada; nenhuma resposta foi enviada.");
+        const feedback = InterviewPracticeService.reviewAnswer({ answer: interviewDraft.answer, candidate: currentUser });
+        saved = await performPlatformAction("saveInterviewPractice", {
+          practice: { ...interviewDraft, question: question.question, feedback },
+        }, () => PlatformService.saveInterviewPractice(currentUser.id, { ...interviewDraft, question: question.question, feedback }));
+      }
       interviewReviewId = saved.id;
       interviewDraft.answer = "";
       renderPage();
-      showToast("Revisão guiada salva apenas neste navegador.", "success");
+      showToast(consentToAi ? "Análise de entrevista concluída com o provedor de IA configurado." : (APP_CONFIG.useApi ? "Revisão guiada salva no seu histórico." : "Revisão guiada salva apenas neste navegador."), "success");
       return;
     }
     if (kind === "interview-invitation") {
@@ -1349,56 +1422,57 @@ async function handleFormSubmit(form) {
       valid = markField(meetingDetails, validDetails, mode.value === "Presencial" ? "Informe o endereço ou local presencial." : "Informe um link http(s) válido ou deixe em branco.") && valid;
       valid = markField(message, message.value.trim().length >= 10 && message.value.trim().length <= 700, "Escreva uma mensagem de 10 a 700 caracteres.") && valid;
       if (!valid) return;
-      PlatformService.createInterviewInvitation(session.companyId, session.userId, form.dataset.applicationId, {
-        startsAt: startsAt.value, mode: mode.value, meetingDetails: details, message: message.value,
-      });
+      const invitationFields = { startsAt: new Date(startsAt.value).toISOString(), mode: mode.value, meetingDetails: details, message: message.value };
+      await performPlatformAction("createInterviewInvitation", { applicationId: form.dataset.applicationId, fields: invitationFields }, () => PlatformService.createInterviewInvitation(session.companyId, session.userId, form.dataset.applicationId, { ...invitationFields, startsAt: startsAt.value }));
       closeDialog();
       renderPage();
-      showToast("Convite enviado e registrado na candidatura; nenhum e-mail foi enviado.", "success");
+      showToast(APP_CONFIG.useApi ? "Convite enviado e vinculado à candidatura." : "Convite enviado e registrado na candidatura; nenhum e-mail foi enviado.", "success");
       return;
     }
     if (kind === "connection-introduction") {
       const introduction = $("#connectionIntroduction", form);
       if (!markField(introduction, introduction.value.trim().length >= 10, "Escreva ao menos 10 caracteres.")) return;
-      PlatformService.startCandidateConnection(form.dataset.companyId, currentUser.id, introduction.value);
+      await performPlatformAction("startCandidateConnection", { companyId: form.dataset.companyId, presentation: introduction.value }, () => PlatformService.startCandidateConnection(form.dataset.companyId, currentUser.id, introduction.value));
       closeDialog();
       currentView = "connections";
       renderPage();
-      showToast("Apresentação enviada; a conexão demonstrativa está aberta.", "success");
+      showToast(APP_CONFIG.useApi ? "Apresentação enviada; a conversa está aberta." : "Apresentação enviada; a conexão demonstrativa está aberta.", "success");
       return;
     }
     if (kind === "connection-invite") {
       const invitation = $("#candidateInvitation", form);
       if (!markField(invitation, invitation.value.trim().length >= 10, "Escreva ao menos 10 caracteres.")) return;
-      PlatformService.inviteCandidate(session.companyId, session.userId, form.dataset.candidateId, invitation.value);
+      await performPlatformAction("inviteCandidate", { candidateId: form.dataset.candidateId, invitationMessage: invitation.value }, () => PlatformService.inviteCandidate(session.companyId, session.userId, form.dataset.candidateId, invitation.value));
       closeDialog();
       currentView = "company-connections";
       renderPage();
-      showToast("Convite demonstrativo enviado; aguarda a decisão do candidato.", "success");
+      showToast(APP_CONFIG.useApi ? "Convite enviado; aguarda a decisão do candidato." : "Convite demonstrativo enviado; aguarda a decisão do candidato.", "success");
       return;
     }
     if (kind === "connection-message") {
       const message = form.querySelector("textarea");
       if (!markField(message, message.value.trim().length >= 1, "Escreva uma mensagem.")) return;
-      PlatformService.sendConnectionMessage(form.dataset.connectionId, session.userId, message.value);
+      await performPlatformAction("sendConnectionMessage", { connectionId: form.dataset.connectionId, text: message.value }, () => PlatformService.sendConnectionMessage(form.dataset.connectionId, session.userId, message.value));
       renderPage();
-      showToast("Mensagem salva na conversa local.", "success");
+      showToast(APP_CONFIG.useApi ? "Mensagem enviada na conversa." : "Mensagem salva na conversa local.", "success");
       return;
     }
     if (kind === "radar-address") {
       const settings = PlatformService.getCandidateSettings(currentUser.id);
-      PlatformService.saveCandidateSettings(currentUser.id, { ...settings, radarAddress: $("#radarAddress", form).value });
+      const updated = { ...settings, radarAddress: $("#radarAddress", form).value };
+      await performPlatformAction("saveCandidateSettings", { settings: remoteSettings(updated) }, () => PlatformService.saveCandidateSettings(currentUser.id, updated));
       renderPage();
-      showToast("Endereço de referência atualizado localmente.", "success");
+      showToast(APP_CONFIG.useApi ? "Endereço de referência atualizado." : "Endereço de referência atualizado localmente.", "success");
       return;
     }
     if (kind === "candidate-settings") {
-      PlatformService.saveCandidateSettings(currentUser.id, {
+      const settings = { ...PlatformService.getCandidateSettings(currentUser.id),
         distanceMaxKm: $("#settingDistance", form).value,
         notifyNewJobs: $("#settingJobNotifications", form).checked,
         visibleToCompanies: $("#settingVisible", form).checked,
-      });
-      showToast("Preferências salvas neste navegador.", "success");
+      };
+      await performPlatformAction("saveCandidateSettings", { settings: remoteSettings(settings) }, () => PlatformService.saveCandidateSettings(currentUser.id, settings));
+      showToast(APP_CONFIG.useApi ? "Preferências salvas na sua conta." : "Preferências salvas neste navegador.", "success");
       renderPage();
       return;
     }
@@ -1407,7 +1481,7 @@ async function handleFormSubmit(form) {
       if (!markField(email, Validators.email(email.value), "Informe um e-mail válido.")) return;
       currentUser = await UserService.updateEmail(session.userId, email.value, session.token);
       AuthService.updateSessionProfile(currentUser);
-      showToast("E-mail atualizado para esta demonstração local.", "success");
+      showToast(currentUser.emailConfirmationPending ? "Enviamos um link ao novo endereço. O e-mail de acesso muda após a confirmação." : APP_CONFIG.useApi ? "Seu endereço de e-mail já está atualizado." : "E-mail atualizado para esta demonstração local.", "success");
       renderPage();
       return;
     }
@@ -1422,7 +1496,7 @@ async function handleFormSubmit(form) {
       if (!valid) return;
       await AuthService.changePassword(session.userId, current.value, next.value, session.token);
       form.reset();
-      showToast("Senha atualizada para esta demonstração local.", "success");
+      showToast(APP_CONFIG.useApi ? "Senha atualizada com segurança." : "Senha atualizada para esta demonstração local.", "success");
       return;
     }
     if (kind === "company-profile") {
@@ -1444,12 +1518,14 @@ async function handleFormSubmit(form) {
       valid = markField(email, Validators.email(email.value), "Informe um e-mail válido.") && valid;
       valid = markField(website, Validators.url(website.value), "Informe uma URL válida.") && valid;
       if (!valid) return;
-      currentCompany = PlatformService.saveCompany(session.companyId, session.userId, {
+      const fields = {
         name: name.value, sector: sector.value, description: description.value, city: city.value,
         state: state.value, address: address.value, contactEmail: email.value, website: website.value,
         phone: formValue(form, "companyPhone"),
-      });
-      showToast("Dados da empresa atualizados localmente.", "success");
+      };
+      await performPlatformAction("saveCompany", { companyId: session.companyId, fields }, () => PlatformService.saveCompany(session.companyId, session.userId, fields));
+      currentCompany = PlatformService.getCompany(session.companyId);
+      showToast(APP_CONFIG.useApi ? "Dados da empresa atualizados." : "Dados da empresa atualizados localmente.", "success");
       renderPage();
       return;
     }
@@ -1497,19 +1573,23 @@ async function handleFormSubmit(form) {
       const fields = {
         title: title.value, area: area.value, type: type.value, modality: modality.value,
         city: city.value, state: state.value, address: address.value, education: education.value,
-        description: description.value, salaryMin, salaryMax, requirements: requirements.value, benefits: formValue(form, "jobBenefits"),
+        description: description.value, salaryMin, salaryMax,
+        requirements: requirements.value.split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
+        benefits: formValue(form, "jobBenefits").split(/\r?\n/).map((item) => item.trim()).filter(Boolean),
         applicationUrl: applicationUrl.value, active: $("#jobActive", form).checked,
       };
       const jobId = form.dataset.jobId;
       if (jobId) {
         const existing = PlatformService.getAllJobs().find((entry) => entry.id === jobId);
-        PlatformService.updateJob(jobId, form.dataset.companyId || existing?.companyId, session.userId, fields, form.dataset.actorRole);
+        await performPlatformAction("updateJob", { jobId, fields }, () => PlatformService.updateJob(jobId, form.dataset.companyId || existing?.companyId, session.userId, fields, form.dataset.actorRole));
       } else {
-        PlatformService.createJob(session.companyId, session.userId, fields);
+        await performPlatformAction("createJob", { fields }, () => PlatformService.createJob(session.companyId, session.userId, fields));
       }
       closeDialog();
       renderPage();
-      showToast(jobId && form.dataset.actorRole === "company" ? "Alterações salvas; o anúncio voltou para revisão." : jobId ? "Vaga editada localmente." : "Anúncio enviado para revisão local.", "success");
+      showToast(jobId
+        ? (APP_CONFIG.useApi ? "Anúncio atualizado." : form.dataset.actorRole === "company" ? "Alterações salvas; o anúncio voltou para revisão local." : "Vaga editada localmente.")
+        : (APP_CONFIG.useApi ? "Anúncio enviado para revisão." : "Anúncio enviado para revisão local."), "success");
       return;
     }
     if (kind === "admin-company") {
@@ -1521,14 +1601,15 @@ async function handleFormSubmit(form) {
       valid = markField(email, !email.value || Validators.email(email.value), "Informe um e-mail válido.") && valid;
       valid = markField(website, Validators.url(website.value), "Informe uma URL válida.") && valid;
       if (!valid) return;
-      PlatformService.adminUpdateCompany(form.dataset.id, {
+      const fields = {
         name: name.value, sector: formValue(form, "adminCompanySector"), description: formValue(form, "adminCompanyDescription"),
         city: formValue(form, "adminCompanyCity"), state: formValue(form, "adminCompanyState"), address: formValue(form, "adminCompanyAddress"),
         contactEmail: email.value, website: website.value,
-      });
+      };
+      await performPlatformAction("adminUpdateCompany", { companyId: form.dataset.id, fields }, () => PlatformService.adminUpdateCompany(form.dataset.id, fields));
       closeDialog();
       renderPage();
-      showToast("Registro empresarial editado localmente.", "success");
+      showToast(APP_CONFIG.useApi ? "Registro empresarial atualizado." : "Registro empresarial editado localmente.", "success");
       return;
     }
     if (kind === "ad") {
@@ -1538,10 +1619,12 @@ async function handleFormSubmit(form) {
       valid = markField(title, Validators.required(title.value), "Informe um título.") && valid;
       valid = markField(message, message.value.trim().length >= 10, "Escreva ao menos 10 caracteres.") && valid;
       if (!valid) return;
-      PlatformService.saveAd({ title: title.value, message: message.value, active: $("#adActive", form)?.checked ?? true }, form.dataset.id || null);
+      const fields = { title: title.value, message: message.value, active: $("#adActive", form)?.checked ?? true };
+      const adId = form.dataset.id || null;
+      await performPlatformAction("saveAd", { adId, fields }, () => PlatformService.saveAd(fields, adId));
       closeDialog();
       renderPage();
-      showToast("Comunicado demonstrativo salvo.", "success");
+      showToast(APP_CONFIG.useApi ? "Comunicado publicado na plataforma." : "Comunicado demonstrativo salvo.", "success");
       return;
     }
     if (kind === "report") {
@@ -1551,10 +1634,11 @@ async function handleFormSubmit(form) {
       valid = markField(category, Validators.required(category.value), "Selecione uma categoria.") && valid;
       valid = markField(description, description.value.trim().length >= 10, "Escreva ao menos 10 caracteres.") && valid;
       if (!valid) return;
-      PlatformService.createReport(currentUser, { category: category.value, description: description.value, connectionId: form.dataset.connectionId });
+      const reportFields = { category: category.value, description: description.value, connectionId: form.dataset.connectionId || null };
+      await performPlatformAction("createReport", { fields: reportFields }, () => PlatformService.createReport(currentUser, reportFields));
       closeDialog();
-      if (session.role === "candidate") { currentView = "notifications"; renderPage(); }
-      showToast("Relato guardado apenas localmente.", "success");
+      if (session.role === "candidate" && !APP_CONFIG.useApi) { currentView = "notifications"; renderPage(); }
+      showToast(APP_CONFIG.useApi ? "Relato enviado à equipe SkillMatch." : "Relato guardado apenas localmente.", "success");
     }
   } catch (error) {
     showToast(error.message || "Não foi possível salvar os dados.", "error");
@@ -1569,15 +1653,15 @@ appNav.addEventListener("click", (event) => {
 });
 pageHeader.addEventListener("click", (event) => {
   const action = event.target.closest("[data-action]");
-  if (action) runAction(action);
+  if (action) runAction(action).catch((error) => showToast(error.message || "Não foi possível concluir a ação.", "error"));
 });
 appContent.addEventListener("click", (event) => {
   const action = event.target.closest("[data-action]");
-  if (action) runAction(action);
+  if (action) runAction(action).catch((error) => showToast(error.message || "Não foi possível concluir a ação.", "error"));
 });
 appModalContent.addEventListener("click", (event) => {
   const action = event.target.closest("[data-action]");
-  if (action) runAction(action);
+  if (action) runAction(action).catch((error) => showToast(error.message || "Não foi possível concluir a ação.", "error"));
 });
 
 appContent.addEventListener("input", (event) => {
@@ -1588,7 +1672,7 @@ appContent.addEventListener("input", (event) => {
   if (event.target.id === "interviewAnswer") interviewDraft.answer = event.target.value;
   if (event.target.id === "interviewTargetRole") interviewDraft.targetRole = event.target.value;
 });
-appContent.addEventListener("change", (event) => {
+appContent.addEventListener("change", async (event) => {
   if (["jobArea", "jobType", "jobModality", "jobSort"].includes(event.target.id)) renderFilteredJobs();
   if (event.target.id === "interviewType") {
     interviewDraft.jobType = event.target.value;
@@ -1603,14 +1687,19 @@ appContent.addEventListener("change", (event) => {
   if (["radarRadius", "radarCity", "radarState", "radarNeighborhood", "radarType", "radarArea", "radarModality"].includes(event.target.id)) {
     const settings = PlatformService.getCandidateSettings(currentUser.id);
     const keyById = { radarRadius: "distanceMaxKm", radarCity: "radarCity", radarState: "radarState", radarNeighborhood: "radarNeighborhood", radarType: "radarType", radarArea: "radarArea", radarModality: "radarModality" };
-    PlatformService.saveCandidateSettings(currentUser.id, { ...settings, [keyById[event.target.id]]: event.target.value });
-    renderPage();
+    const updated = { ...settings, [keyById[event.target.id]]: event.target.value };
+    try {
+      await performPlatformAction("saveCandidateSettings", { settings: remoteSettings(updated) }, () => PlatformService.saveCandidateSettings(currentUser.id, updated));
+      renderPage();
+    } catch (error) {
+      showToast(error.message || "Não foi possível salvar a preferência.", "error");
+    }
   }
   if (event.target.matches("[data-application-status]")) {
     try {
-      PlatformService.updateApplicationStatus(event.target.dataset.applicationStatus, session.companyId, event.target.value);
+      await performPlatformAction("updateApplicationStatus", { applicationId: event.target.dataset.applicationStatus, status: event.target.value }, () => PlatformService.updateApplicationStatus(event.target.dataset.applicationStatus, session.companyId, event.target.value));
       renderPage();
-      showToast("Status atualizado e notificação local registrada.", "success");
+      showToast(APP_CONFIG.useApi ? "Status da candidatura atualizado." : "Status atualizado e notificação local registrada.", "success");
     } catch (error) { showToast(error.message, "error"); }
   }
 });
@@ -1662,7 +1751,8 @@ async function bootstrap() {
       window.location.replace("login.html?redirect=painel");
       return;
     }
-    PlatformService.init();
+    if (APP_CONFIG.useApi) await PlatformService.loadRemoteSnapshot(session.token);
+    else PlatformService.init();
     if (session.role === "company") {
       currentCompany = PlatformService.getCompany(session.companyId || currentUser.companyId);
       if (!currentCompany) {

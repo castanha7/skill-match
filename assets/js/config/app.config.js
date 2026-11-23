@@ -1,16 +1,31 @@
+const requestedApiBase = String(
+  globalThis.SKILLMATCH_CONFIG?.apiBaseUrl
+  || globalThis.document?.querySelector('meta[name="skillmatch-api-base"]')?.content
+  || '',
+).trim().replace(/\/$/, '');
+
+function isSafeApiBase(value) {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    const localHost = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+    return (url.protocol === "https:" || (url.protocol === "http:" && localHost))
+      && !url.username && !url.password && !url.search && !url.hash;
+  } catch { return false; }
+}
+
+const configuredApiBase = isSafeApiBase(requestedApiBase) ? requestedApiBase : '';
+
 /**
- * Configuração do frontend SkillMatch.
- * O modo de demonstração usa somente armazenamento do navegador; isso NÃO é
- * autenticação segura nem persistência compartilhada entre dispositivos.
- * A API deve ser implantada separadamente antes de habilitar useApi.
+ * Configuração pública do frontend. A URL da API não é um segredo; chaves
+ * Supabase service-role e credenciais de IA pertencem exclusivamente ao backend.
+ * Se não houver URL, as contas demonstrativas locais continuam disponíveis.
  */
 export const APP_CONFIG = {
   appName: "SkillMatch",
   slogan: "Suas habilidades. Sua oportunidade.",
-  useApi: false,
-  // Não apontar para localhost em uma publicação estática. Defina por ambiente
-  // quando a API Express estiver implantada, nunca com segredos no frontend.
-  apiBaseUrl: globalThis.document?.querySelector('meta[name="skillmatch-api-base"]')?.content?.trim() || "",
+  useApi: Boolean(configuredApiBase),
+  apiBaseUrl: configuredApiBase,
   storageKeys: {
     users: "skillmatch:users",
     session: "skillmatch:session",
@@ -21,7 +36,7 @@ export const APP_CONFIG = {
   sessionMaxAge: 7 * 24 * 60 * 60 * 1000,
 };
 
-/** Catálogos usados pelos formulários demonstrativos. */
+/** Catálogos usados pelos formulários demonstrativos e pelos formulários autenticados. */
 export const CATALOGS = {
   estados: [
     "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",

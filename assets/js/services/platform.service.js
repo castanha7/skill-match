@@ -1,9 +1,11 @@
 import { APP_CONFIG } from "../config/app.config.js";
 import { StorageService } from "./storage.service.js";
+import ApiService from "./api.service.js";
 import { UserService } from "./user.service.js";
 import { isValidCnpj, normalizeCnpj } from "../../../shared/cnpj.js";
 
 const DATA_KEY = APP_CONFIG.storageKeys.platform;
+let remoteSnapshot = null;
 const APP_STATUS = new Set(["Recebida", "Em análise", "Entrevista", "Não selecionada", "Contratada", "Desistiu"]);
 
 const DEMO_COMPANIES = [
@@ -252,6 +254,7 @@ function addUniqueJobNotification(state, candidateId, job) {
 }
 
 function ensureState() {
+  if (APP_CONFIG.useApi) return remoteSnapshot || EMPTY_STATE();
   const stored = StorageService.get(DATA_KEY);
   const state = stored && [1, 2].includes(stored.version) ? stored : EMPTY_STATE();
   const migrateLegacyConsent = Boolean(stored && stored.version === 1);
@@ -318,6 +321,7 @@ function ensureState() {
 }
 
 function update(mutator) {
+  if (APP_CONFIG.useApi) throw new Error("Esta operação exige o serviço remoto; a plataforma não altera dados reais no navegador.");
   const state = ensureState();
   const result = mutator(state);
   persist(state);
@@ -430,6 +434,58 @@ function coordinatesFor(place) {
 export const PlatformService = {
   init() {
     return ensureState();
+  },
+
+  async loadRemoteSnapshot(token = null) {
+    if (!APP_CONFIG.useApi) return ensureState();
+    const response = await ApiService.get("/api/platform/snapshot", token);
+    const data = response || {};
+    remoteSnapshot = {
+      ...EMPTY_STATE(),
+      version: 2,
+      companies: Array.isArray(data.companies) ? data.companies : [],
+      jobs: Array.isArray(data.jobs) ? data.jobs : [],
+      applications: Array.isArray(data.applications) ? data.applications : [],
+      favorites: Array.isArray(data.favorites) ? data.favorites : [],
+      connections: Array.isArray(data.connections) ? data.connections : [],
+      messages: Array.isArray(data.messages) ? data.messages : [],
+      savedTalents: Array.isArray(data.savedTalents) ? data.savedTalents : [],
+      interviewHistory: Array.isArray(data.interviewHistory) ? data.interviewHistory : [],
+      interviewInvitations: Array.isArray(data.interviewInvitations) ? data.interviewInvitations : [],
+      notifications: Array.isArray(data.notifications) ? data.notifications : [],
+      preferences: data.preferences && typeof data.preferences === "object" ? data.preferences : {},
+      reports: Array.isArray(data.reports) ? data.reports : [],
+      ads: Array.isArray(data.ads) ? data.ads : [],
+      users: Array.isArray(data.users) ? data.users : [],
+    };
+    UserService.setRemoteUsers(remoteSnapshot.users);
+    return remoteSnapshot;
+  },
+
+  async performRemoteAction(action, data = {}, token = null, { refresh = true } = {}) {
+    if (!APP_CONFIG.useApi) throw new Error("A operação remota só está disponível quando a API está configurada.");
+    const response = await ApiService.post("/api/platform/actions", { action, data }, token);
+    if (refresh) await this.loadRemoteSnapshot(token);
+    return response?.result;
+  },
+
+  markRemoteMessagesRead(connectionId, userId) {
+    if (!remoteSnapshot) return false;
+    let changed = false;
+    remoteSnapshot.messages = remoteSnapshot.messages.map((message) => {
+      if (message.connectionId !== connectionId || message.recipientId !== userId || message.read) return message;
+      changed = true;
+      return { ...message, read: true, readAt: new Date().toISOString() };
+    });
+    for (const connection of remoteSnapshot.connections) {
+      if (connection.id === connectionId) connection.messages = remoteSnapshot.messages.filter((message) => message.connectionId === connectionId);
+    }
+    return changed;
+  },
+
+  clearRemoteSnapshot() {
+    remoteSnapshot = null;
+    UserService.clearRemoteUsers();
   },
 
   getSnapshot() {
@@ -831,12 +887,17 @@ export const PlatformService = {
   getConnectionMessages(connectionId, userId) {
     const state = ensureState();
     const connection = state.connections.find((entry) => entry.id === connectionId);
-    if (!connection || !isConnectionParticipant(state, connection, userId)) throw new Error("Conversa não encontrada para esta conta.");
+    if (APP_CONFIG.useApi) {
+      if (!connection || connection.status !== "connected") throw new Error("Conversa não encontrada para esta conta.");
+    } else if (!connection || !isConnectionParticipant(state, connection, userId)) {
+      throw new Error("Conversa não encontrada para esta conta.");
+    }
     return state.messages
       .filter((message) => message.connectionId === connectionId)
       .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
       .map((message) => ({ ...message }));
   },
+
 
   sendConnectionMessage(connectionId, senderId, text) {
     return update((state) => {
@@ -1126,8 +1187,10 @@ export const PlatformService = {
   },
 
   getCandidateSettings(userId) {
-    const settings = ensureState().preferences[userId];
-    return { distanceMaxKm: 50, visibleToCompanies: false, notifyNewJobs: true, radarAddress: "", radarCity: "", radarState: "", radarNeighborhood: "", radarType: "", radarArea: "", radarModality: "", ...(settings || {}) };
+    const state = ensureState();
+    const settings = state.preferences[userId] || {};
+    const candidate = APP_CONFIG.useApi ? UserService.listByRole("candidate").find((entry) => entry.id === userId) : null;
+    return { distanceMaxKm: 50, visibleToCompanies: candidate?.visibleToCompanies === true, notifyNewJobs: true, radarAddress: "", radarCity: "", radarState: "", radarNeighborhood: "", radarType: "", radarArea: "", radarModality: "", ...(settings || {}), ...(candidate ? { visibleToCompanies: candidate.visibleToCompanies === true, contactSharingConsent: candidate.contactSharingConsent === true } : {}) };
   },
 
   saveCandidateSettings(userId, settings) {

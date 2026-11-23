@@ -1,6 +1,6 @@
 import { $, showToast, setFieldError, clearFieldError, bindAutoClear } from "../utils/dom.js";
 import { Validators } from "../utils/validators.js";
-import { CATALOGS } from "../config/app.config.js";
+import { APP_CONFIG, CATALOGS } from "../config/app.config.js";
 import { AuthService } from "../services/auth.service.js";
 import { PlatformService } from "../services/platform.service.js";
 import { normalizeCnpj } from "../../../shared/cnpj.js";
@@ -60,7 +60,7 @@ form.addEventListener("submit", async (event) => {
     form.querySelector('[aria-invalid="true"]')?.focus();
     return;
   }
-  if (PlatformService.cnpjJaCadastrado($("#companyCnpj").value)) {
+  if (!APP_CONFIG.useApi && PlatformService.cnpjJaCadastrado($("#companyCnpj").value)) {
     setFieldError($("#companyCnpj"), "Este CNPJ já está cadastrado neste navegador.");
     $("#companyCnpj").focus();
     return;
@@ -71,9 +71,9 @@ form.addEventListener("submit", async (event) => {
     return;
   }
   button.disabled = true;
-  button.innerHTML = '<span class="spinner"></span><span>Salvando cadastro local...</span>';
+  button.innerHTML = `<span class="spinner"></span><span>${APP_CONFIG.useApi ? "Enviando cadastro..." : "Salvando cadastro local..."}</span>`;
   try {
-    await AuthService.registerCompany({
+    const user = await AuthService.registerCompany({
       nome: $("#contactName").value.trim(),
       email: $("#companyEmail").value.trim(),
       senha: $("#companyPassword").value,
@@ -86,12 +86,17 @@ form.addEventListener("submit", async (event) => {
       state: $("#companyState").value,
       website: $("#companyWebsite").value.trim(),
     });
-    showToast("Perfil empresarial demonstrativo criado.", "success");
-    setTimeout(() => window.location.replace("painel.html?bemvindo=empresa"), 550);
+    if (user.requiresEmailConfirmation) {
+      showToast("Cadastro empresarial recebido. Confirme o e-mail enviado para ativar o acesso.", "success");
+      setTimeout(() => window.location.replace("login.html?confirmacao=1&role=company"), 700);
+    } else {
+      showToast(APP_CONFIG.useApi ? "Cadastro empresarial criado com sucesso." : "Perfil empresarial demonstrativo criado.", "success");
+      setTimeout(() => window.location.replace("painel.html?bemvindo=empresa"), 550);
+    }
   } catch (error) {
     alertText.textContent = error.message || "Não foi possível criar o cadastro empresarial.";
     alertBox.classList.add("show");
     button.disabled = false;
-    button.innerHTML = 'Criar conta empresarial demonstrativa <span aria-hidden="true">→</span>';
+    button.innerHTML = `${APP_CONFIG.useApi ? "Criar conta empresarial" : "Criar conta empresarial demonstrativa"} <span aria-hidden="true">→</span>`;
   }
 });
