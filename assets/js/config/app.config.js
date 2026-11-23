@@ -20,7 +20,9 @@ const pageOrigin = String(document?.location?.origin || '').replace(/\/$/, '');
 const configuredApiBase = explicitApiBase
   ? (explicitApiIsValid ? explicitApiBase : '')
   : (isSafeApiBase(pageOrigin) ? pageOrigin : '');
-const demoMode = globalThis.SKILLMATCH_CONFIG?.mode === 'demo';
+let selectedDemo = false;
+try { selectedDemo = globalThis.sessionStorage?.getItem('skillmatch:demo-mode') === 'true'; } catch { /* Storage pode estar indisponível. */ }
+const demoMode = globalThis.SKILLMATCH_CONFIG?.mode === 'demo' || selectedDemo;
 
 /**
  * A API é o modo padrão. O frontend não persiste dados de produto no navegador:
@@ -35,7 +37,7 @@ export const APP_CONFIG = {
   apiBaseUrl: configuredApiBase,
   storageKeys: {
     users: "skillmatch:users",
-    session: "skillmatch:session",
+    session: demoMode ? "skillmatch:demo-session" : "skillmatch:session",
     seeded: "skillmatch:seeded",
     platform: "skillmatch:platform",
     passwordReset: "skillmatch:demo-password-reset",

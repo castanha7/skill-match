@@ -24,7 +24,7 @@ Não coloque chaves secretas no frontend, no repositório ou em mensagens. O arq
 
 ## Persistência e modo de demonstração
 
-O modo normal usa a API; falhas de rede não trocam silenciosamente para dados fictícios. Fixtures locais só são ativadas por uma configuração explícita `SKILLMATCH_CONFIG.mode = "demo"`, usada pelos testes e por ambientes de demonstração. No modo API, os registros da plataforma são enviados ao backend/Supabase, não usados como banco em `localStorage`. A sessão de autenticação pode usar armazenamento do navegador conforme a opção “Lembrar-me”; isso não é armazenamento de registros da plataforma.
+O modo normal usa a API; falhas de rede não trocam silenciosamente para dados fictícios. Na tela de login, selecione **Acessar demonstração** para usar contas e dados fictícios locais; use **Voltar ao acesso normal** para retornar à API. A escolha vale para a aba atual. Fixtures também podem ser ativadas explicitamente por `SKILLMATCH_CONFIG.mode = "demo"` nos testes e em ambientes de demonstração. No modo API, os registros da plataforma são enviados ao backend/Supabase, não usados como banco em `localStorage`. A sessão de autenticação pode usar armazenamento do navegador conforme a opção “Lembrar-me”; isso não é armazenamento de registros da plataforma.
 
 ## Testes
 
